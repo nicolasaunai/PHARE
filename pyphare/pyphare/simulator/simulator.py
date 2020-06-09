@@ -14,8 +14,10 @@ class Simulator:
         self.cpp_dman = None   # DRAGONS
         self.cpp_dw   = None   # i.e. use weakrefs if you have to ref these.
 
+
     def __del__(self):
         self.reset()
+
 
     def initialize(self):
         if self.cpp_sim is not None:
