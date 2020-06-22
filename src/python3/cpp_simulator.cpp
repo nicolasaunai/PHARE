@@ -51,12 +51,9 @@ void setPatchData(PatchData& data, std::string patchID, std::string origin,
     std::memcpy(data.upper.request().ptr, upper.data(), bytes);
     data.patchID = patchID;
     data.origin  = origin;
-<<<<<<< HEAD
-=======
 
     std::memcpy(data.lower.request().ptr, lower.data(), PatchData::dimension);
     std::memcpy(data.upper.request().ptr, upper.data(), PatchData::dimension);
->>>>>>> PatchData.lower/upper as pybind arrays for auto conversion to np.ndarray in python3
 }
 
 template<typename PatchData, typename GridLayout>
