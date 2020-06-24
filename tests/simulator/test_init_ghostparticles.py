@@ -173,5 +173,9 @@ class ParticleInitializationTest(unittest.TestCase):
 
         simulator = None
 
+    def tearDown(self):
+        if self.simulator is not None:
+            self.simulator.reset()
+
 if __name__ == "__main__":
     unittest.main()
