@@ -127,8 +127,6 @@ def populate_simulation(dim, interp, **input):
 
     ElectronModel(closure="isothermal", Te=0.12)
 
-    ph.populateDict()
-
     return simulation
 
 

@@ -1,8 +1,13 @@
 
-
-
+import atexit
 
 life_cycles = {}
+
+@atexit.register
+def clear_life_cycles():
+    global life_cycles
+    life_cycles.clear()
+
 
 class Simulator:
     def __init__(self, simulation):
