@@ -24,8 +24,10 @@ class Simulator:
             raise ValueError("Simulator already initialized: requires reset to re-initialize")
         try:
             from pybindlibs import cpp
+            from pyphare.pharein import populateDict
             if "samrai" not in life_cycles:
                 life_cycles["samrai"] = cpp.SamraiLifeCycle()
+            populateDict()
             self.cpp_hier = cpp.make_hierarchy()
             self.cpp_sim = cpp.make_simulator(self.cpp_hier)
             self.cpp_sim.initialize()
@@ -71,6 +73,20 @@ class Simulator:
     def currentTime(self):
         self._check_init()
         return self.cpp_sim.currentTime()
+
+    def domain_box(self):
+        self._check_init()
+        return self.cpp_sim.domain_box()
+
+    def cell_width(self):
+        self._check_init()
+        return self.cpp_sim.cell_width()
+
+    def interp_order(self):
+        self._check_init()
+        return self.cpp_sim.interp_order()
+
+
 
     def _check_init(self):
         if self.cpp_sim is None:

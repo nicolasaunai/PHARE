@@ -342,10 +342,10 @@ def hierarchy_fromh5(h5_filename, time, hier):
         # then add all other times
         print("creating hierarchy from all times in file")
         times = list(data_file.keys())
-        hier = hierarchy_from(h5_filename, time=times[0])
+        hier = hierarchy_from(h5_filename=h5_filename, time=times[0])
         if len(times) > 1:
             for time in times[1:]:
-                hierarchy_from(h5_filename, time=time, hier=hier)
+                hierarchy_from(h5_filename=h5_filename, time=time, hier=hier)
         return hier
 
     if create_from_one_time(time, hier):
@@ -490,9 +490,8 @@ def isFieldQty(qty):
 
 
 
-def hierarchy_from_sim(simulator, sim_hier, qty, pop=""):
-
-    dw = DataWrangler(simulator, sim_hier)
+def hierarchy_from_sim(simulator, qty, pop=""):
+    dw = simulator.data_wrangler()    
     nbr_levels = dw.getNumberOfLevels()
     patch_levels = {}
 
@@ -614,7 +613,7 @@ def hierarchy_from_sim(simulator, sim_hier, qty, pop=""):
 
 
 
-def hierarchy_from(simulator=None, sim_hier = None, qty= None, pop = "", h5_filename=None, time=None, hier=None):
+def hierarchy_from(simulator=None, qty= None, pop = "", h5_filename=None, time=None, hier=None):
     """
     this function reads an HDF5 PHARE file and returns a PatchHierarchy from
     which data is accessible.
@@ -632,8 +631,10 @@ def hierarchy_from(simulator=None, sim_hier = None, qty= None, pop = "", h5_file
     if h5_filename is not None:
         return hierarchy_fromh5(h5_filename, time, hier)
 
-    if simulator is not None and sim_hier is not None and qty is not None:
-        return hierarchy_from_sim(simulator, sim_hier, qty, pop=pop)
+    if simulator is not None and qty is not None:
+        return hierarchy_from_sim(simulator, qty, pop=pop)
+
+    raise ValueError("can't make hierarchy")
 
 
 

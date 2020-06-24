@@ -1,6 +1,6 @@
 
 from pybindlibs import cpp
-from pyphare.simulator.simulator import create_simulator  # keep that guy first
+from pyphare.simulator.simulator import Simulator
 from pyphare.pharesee.hierarchy import hierarchy_from
 from pyphare.pharein import MaxwellianFluidModel
 from pyphare.pharein import ElectronModel
@@ -83,11 +83,12 @@ class ParticleInitializationTest(unittest.TestCase):
 
         ElectronModel(closure="isothermal", Te=0.12)
 
-        dman, simulator, hier = create_simulator()
+        simulator = Simulator(globals.sim)
         simulator.initialize()
 
-        datahier = hierarchy_from(simulator, hier, "particles", pop="protons")
-        return dman,simulator, hier, datahier
+        datahier = hierarchy_from(simulator, "particles", pop="protons")
+        print(datahier)
+        return simulator, datahier
 
 
     @data((1, {"L0": {"B0": [(10, ), (20, )]}}),
@@ -99,7 +100,7 @@ class ParticleInitializationTest(unittest.TestCase):
     @unpack
     def test_patch_ghost_particle_are_clone_of_overlaped_patch_domain_particles(self,interp_order, refinement_boxes):
 
-        dman, simulator, hier, datahier = self.getHierarchy(interp_order, refinement_boxes)
+        simulator,  datahier = self.getHierarchy(interp_order, refinement_boxes)
         print("interporder : {}".format(interp_order))
         overlaps = hierarchy_overlaps(datahier)
         for ilvl, lvl_overlaps in overlaps.items():
@@ -170,9 +171,7 @@ class ParticleInitializationTest(unittest.TestCase):
                 np.testing.assert_allclose(refdomain.deltas[sort_refdomain_idx], cmpghost.deltas[sort_cmpghost_idx], atol=1e-12)
                 np.testing.assert_allclose(cmpdomain.deltas[sort_cmpdomain_idx], refghost.deltas[sort_refghost_idx], atol=1e-12)
 
-
-        del (dman, simulator, hier)
-        cpp.reset()
+        simulator = None
 
 if __name__ == "__main__":
     unittest.main()

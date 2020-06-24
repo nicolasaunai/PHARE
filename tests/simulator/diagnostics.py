@@ -42,7 +42,7 @@ class DiagnosticsTest(unittest.TestCase):
             em_b_file = os.path.join(local_out, "EM_B.h5")
             self.assertTrue(os.path.exists(os.path.join(local_out, "EM_B.h5")))
 
-            print("hier", hierarchy_from(em_b_file))
+            print("hier", hierarchy_from(h5_filename=em_b_file))
 
             self.simulator = None
 
