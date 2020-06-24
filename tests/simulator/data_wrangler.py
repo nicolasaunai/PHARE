@@ -38,13 +38,6 @@ class DataWranglerTest(unittest.TestCase):
                         self.assertTrue(isinstance(patch.lower, np.ndarray))
                         self.assertTrue(isinstance(patch.upper, np.ndarray))
 
-            del (
-                self.dw,
-                self.dman,
-                self.sim,
-                self.hier,
-            )
-            cpp.reset()
             self.simulator = None
 
     def tearDown(self):
