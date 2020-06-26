@@ -212,7 +212,7 @@ def is_root_lvl(patch_level):
 
 
 
-import h5py
+
 
 field_qties = {"EM_B_x": "Bx",
                "EM_B_z": "By",
@@ -331,7 +331,7 @@ def add_to_patchdata(patch_datas, h5_patch_grp, basename, layout):
 
 
 def hierarchy_fromh5(h5_filename, time, hier):
-
+    import h5py
     data_file = h5py.File(h5_filename, "r")
     basename = os.path.basename(h5_filename)
     root_cell_width = float(data_file.attrs["cell_width"])
