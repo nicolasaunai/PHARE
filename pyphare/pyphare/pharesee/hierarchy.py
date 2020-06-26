@@ -345,7 +345,7 @@ def hierarchy_fromh5(h5_filename, time, hier):
         hier = hierarchy_from(h5_filename=h5_filename, time=times[0])
         if len(times) > 1:
             for time in times[1:]:
-                hierarchy_from(h5_filename=h5_filename, time=time, hier=hier)
+                hierarchy_fromh5(h5_filename, time, hier)
         return hier
 
     if create_from_one_time(time, hier):
@@ -543,9 +543,7 @@ def hierarchy_from_sim(simulator, qty, pop=""):
                 origin = float(patch.origin)
                 layout = GridLayout(Box(lower, upper), origin, lvl_cell_width, interp_order=simulator.interp_order())
 
-                v = np.asarray(patch.data.v)
-                s = v.size
-                v = v[:].reshape(int(s / 3), 3)
+                v = np.asarray(patch.data.v).reshape(int(len(patch.data.v) / 3), 3)
 
                 domain_particles = Particles(icells = np.asarray(patch.data.iCell),
                                              deltas = np.asarray(patch.data.delta),
