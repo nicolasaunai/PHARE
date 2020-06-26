@@ -1,5 +1,4 @@
 
-from pybindlibs import cpp
 from pyphare.simulator.simulator import Simulator
 from pyphare.pharesee.hierarchy import hierarchy_from
 from pyphare.pharein import MaxwellianFluidModel
@@ -135,8 +134,6 @@ class ParticleInitializationTest(unittest.TestCase):
                 # on lvl 0 patches are adjacent
                 # therefore the overlap box must overlap the
                 # patchData box. 1 cell in interporder1, 2 cells for higher
-                #self.assertIsNotNone(ovlped_refdom)
-                #self.assertIsNotNone(ovlped_cmpdom)
                 assert(ovlped_cmpdom is not None)
                 assert(ovlped_refdom is not None)
 
