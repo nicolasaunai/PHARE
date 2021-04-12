@@ -5,11 +5,41 @@ import numpy as np
 
 from .particles import Particles
 
+from ..core.ipython import exit_register
 from ..core import box as boxm
 from ..core.box import Box
 from ..core.gridlayout import GridLayout
 import matplotlib.pyplot as plt
 from ..core.phare_utilities import np_array_ify, is_scalar, listify, refinement_ratio
+
+import weakref
+h5_weak_refs = {}
+
+def add_h5_weak_ref(h5File):
+    # tmp = h5_weak_refs.copy()
+    # for object_id, h5_weak_ref in h5_weak_refs:
+    #     if not h5_weak_ref.alive():
+    #         del tmp[object_id]
+    # h5_weak_refs = tmp
+
+    object_id = id(h5File)
+    #h5_weak_refs[object_id] = weakref.ref(h5File)
+    h5_weak_refs[object_id] = h5File
+
+@exit_register
+def close_h5_files():
+    for object_id, h5File in h5_weak_refs.items():
+        if h5File is not None and h5File.__bool__():
+            # print("closing", h5File)
+            h5File.close()
+
+# @exit_register
+def close_h5_files_refs():
+    for object_id, h5_weak_ref in h5_weak_refs.items():
+        if h5_weak_ref() is not None and h5_weak_ref().__bool__():
+            # print("closing", h5_weak_ref())
+            h5_weak_ref().close()
+
 
 
 class PatchData:
@@ -859,6 +889,7 @@ h5_time_grp_key = "t"
 def hierarchy_fromh5(h5_filename, time, hier, silent=True):
     import h5py
     data_file = h5py.File(h5_filename, "r")
+    add_h5_weak_ref(data_file)
     basename = os.path.basename(h5_filename)
 
     root_cell_width = np.asarray(data_file.attrs["cell_width"])
