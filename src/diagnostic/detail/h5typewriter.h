@@ -106,7 +106,7 @@ protected:
         for (auto& pop : h5Writer.modelView().getIons())
         {
             Attributes popAttributes;
-            popAttributes["pop_mass"] = pop.mass();
+            popAttributes[pop.name()] = pop.mass();
             h5Writer.writeAttributeDict(file, popAttributes, "/");
         }
     }
