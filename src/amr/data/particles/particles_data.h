@@ -435,8 +435,8 @@ namespace amr
             //      - if so, let's add it to my domain particle array
             //      - if not, let's add it to my ghost particle array
             std::cout << "size of particle arrays...\n";
-            std::size_t domainSize     = domainParticles.capacity();
-            std::size_t patchGhostSize = patchGhostParticles.capacity();
+            std::size_t domainSize     = domainParticles.size();
+            std::size_t patchGhostSize = patchGhostParticles.size();
             PHARE_LOG_START("count loop");
             for (auto const& sourceParticlesArray : particlesArrays)
             {
@@ -456,16 +456,16 @@ namespace amr
                 }
             }
             PHARE_LOG_STOP("count loop");
-            std::cout << "domain size : " << domainParticles.capacity() << "\n";
-            std::cout << "patchGhost size : " << patchGhostParticles.capacity() << "\n";
-            // domainParticles.reserve(domainSize);
-            // patchGhostParticles.reserve(patchGhostSize);
-            std::cout << "domain size after resize : " << domainParticles.capacity() << "\n";
-            std::cout << "patchGhost size after resize : " << patchGhostParticles.capacity()
+            std::cout << "domain capacity : " << domainParticles.capacity() << "\n";
+            std::cout << "patchGhost capacity : " << patchGhostParticles.capacity() << "\n";
+            auto domain_idx     = domainParticles.size();
+            auto patchGhost_idx = patchGhostParticles.size();
+            domainParticles.resize(domainSize);
+            patchGhostParticles.resize(patchGhostSize);
+            std::cout << "domain capacity after resize : " << domainParticles.capacity() << "\n";
+            std::cout << "patchGhost capacity after resize : " << patchGhostParticles.capacity()
                       << "\n";
             PHARE_LOG_START("copy loop");
-            auto lastDomain     = domainParticles.end();
-            auto lastPatchGhost = patchGhostParticles.end();
             for (auto const& sourceParticlesArray : particlesArrays)
             {
                 for (auto const& particle : *sourceParticlesArray)
@@ -475,13 +475,15 @@ namespace amr
                         if (isInBox(myDomainBox, particle))
                         {
                             PHARE_LOG_START("copy domain ghost pushback");
-                            domainParticles.push_back(particle);
+                            domainParticles[domain_idx++] = particle;
+                            // domainParticles.push_back(particle);
                             PHARE_LOG_STOP("copy domain ghost pushback");
                         }
                         else
                         {
                             PHARE_LOG_START("copy patch ghost pushback");
-                            patchGhostParticles.push_back(particle);
+                            patchGhostParticles[patchGhost_idx++] = particle;
+                            // patchGhostParticles.push_back(particle);
                             PHARE_LOG_STOP("copy patch ghost pushback");
                         }
                     }
