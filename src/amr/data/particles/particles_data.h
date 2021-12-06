@@ -21,6 +21,8 @@
 #include "amr/resources_manager/amr_utils.h"
 #include "core/utilities/point/point.h"
 
+#include "amr/utilities/box/amr_box.h"
+
 #include "core/logger.h"
 
 namespace PHARE
@@ -382,7 +384,7 @@ namespace amr
 
             if (!destBox.empty())
             {
-                auto destBox_p = toPHAREBox<dim>(destBox);
+                Box<int, dim> destBox_p{destBox};
                 new_size += srcDomainParticles.nbr_particles_in(destBox_p);
                 if (domainParticles.capacity() < new_size)
                     domainParticles.reserve(new_size);
@@ -405,7 +407,7 @@ namespace amr
             {
                 if (!selectionBox.empty())
                 {
-                    auto selectionBox_p = toPHAREBox<dim>(selectionBox);
+                    Box<int, dim> selectionBox_p{selectionBox};
                     new_size += srcDomainParticles.nbr_particles_in(selectionBox_p);
                 }
             }
@@ -417,7 +419,7 @@ namespace amr
             {
                 if (!selectionBox.empty())
                 {
-                    auto selectionBox_p = toPHAREBox<dim>(selectionBox);
+                    Box<int, dim> selectionBox_p{selectionBox};
                     srcDomainParticles.export_particles(selectionBox_p, patchGhostParticles);
                 }
             }
@@ -461,7 +463,7 @@ namespace amr
                 // since a *transformation* is from source to destination.
 
                 transformation.inverseTransform(destBox);
-                auto destBox_p = toPHAREBox<dim>(destBox);
+                Box<int, dim> destBox_p{destBox};
                 new_size += srcDomainParticles.nbr_particles_in(destBox_p);
 
                 if (domainParticles.capacity() < new_size)
@@ -485,7 +487,7 @@ namespace amr
                 if (!selectionBox.empty())
                 {
                     transformation.inverseTransform(selectionBox);
-                    auto selectionBox_p = toPHAREBox<dim>(selectionBox);
+                    Box<int, dim> selectionBox_p{selectionBox};
                     new_size += srcDomainParticles.nbr_particles_in(selectionBox_p);
                 }
             }
@@ -499,7 +501,7 @@ namespace amr
             {
                 if (!selectionBox.empty())
                 {
-                    auto selectionBox_p = toPHAREBox<dim>(selectionBox);
+                    Box<int, dim> selectionBox_p{selectionBox};
                     srcDomainParticles.export_particles(selectionBox_p, patchGhostParticles,
                                                         offseter);
                 }
@@ -542,7 +544,7 @@ namespace amr
                 SAMRAI::hier::Box shiftedOverlapBox{overlapBox};
                 SAMRAI::hier::Transformation const& transformation = overlap.getTransformation();
                 transformation.inverseTransform(shiftedOverlapBox);
-                auto shiftedOverlapBox_p = toPHAREBox<dim>(shiftedOverlapBox);
+                Box<int, dim> shiftedOverlapBox_p{shiftedOverlapBox};
                 numberParticles += domainParticles.nbr_particles_in(shiftedOverlapBox_p);
             }
             return numberParticles;
@@ -577,7 +579,7 @@ namespace amr
             {
                 auto toTakeFrom{box};
                 transformation.inverseTransform(toTakeFrom);
-                auto toTakeFrom_p = toPHAREBox<dim>(toTakeFrom);
+                Box<int, dim> toTakeFrom_p{toTakeFrom};
                 size += domainParticles.nbr_particles_in(toTakeFrom_p);
             }
             outBuffer.reserve(size);
@@ -585,7 +587,7 @@ namespace amr
             {
                 auto toTakeFrom{box};
                 transformation.inverseTransform(toTakeFrom);
-                auto toTakeFrom_p = toPHAREBox<dim>(toTakeFrom);
+                Box<int, dim> toTakeFrom_p{toTakeFrom};
                 domainParticles.export_particles(toTakeFrom_p, outBuffer, offseter);
             }
         }
