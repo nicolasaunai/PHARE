@@ -533,7 +533,7 @@ def checker(func):
         kwargs["largest_patch_size"] = largest
 
         kwargs["nesting_buffer"] = check_nesting_buffer(ndim, **kwargs)
-        
+
         kwargs["tag_buffer"] = kwargs.get('tag_buffer', 1)
 
         kwargs["refinement"] = check_refinement(**kwargs)

@@ -54,7 +54,27 @@ public:
 
 
 
-TYPED_TEST(SimulatorTest, knowsWhichSolverisOnAGivenLevel)
+TYPED_TEST(SimulatorTest, hasAWorkLoadEstimatorNPPC)
+{
+    TypeParam sim;
+    auto& multiphysInteg = *sim.getMultiPhysicsIntegrator();
+
+    for (int iLevel = 0; iLevel < sim.hierarchy->getNumberOfLevels(); ++iLevel)
+    {
+        if (isInHybridRange(iLevel))
+        {
+            // auto& wl_  = multiphysInteg.getWorkLoadEstimator(iLevel);
+            // auto name_ = wl_.name();
+
+            EXPECT_EQ("HybridWorkLoadEstimator_NPPC",
+                      multiphysInteg.getWorkLoadEstimator(iLevel).name());
+        }
+    }
+}
+
+
+
+TYPED_TEST(SimulatorTest, knowsWhichSolverIsOnAGivenLevel)
 {
     TypeParam sim;
     auto& multiphysInteg = *sim.getMultiPhysicsIntegrator();

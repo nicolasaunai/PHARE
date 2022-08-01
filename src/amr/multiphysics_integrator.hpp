@@ -28,6 +28,7 @@
 #include "amr/level_initializer/level_initializer.hpp"
 #include "amr/solvers/solver_mhd.hpp"
 #include "amr/solvers/solver_ppc.hpp"
+#include "amr/work_load/workload.hpp"
 
 #include "core/utilities/algorithm.hpp"
 
@@ -45,6 +46,7 @@ namespace solver
         int solverIndex              = NOT_SET;
         int resourcesManagerIndex    = NOT_SET;
         int taggerIndex              = NOT_SET;
+        int workLoadIndex            = NOT_SET;
         std::string messengerName;
     };
 
@@ -114,6 +116,8 @@ namespace solver
             //@TODO - chaque solveur utilisé doit register ses variables aupres du ResourcesManager
         }
 
+
+        // ~MultiPhysicsIntegrator() { std::cout << "zboub" << std::endl; }
 
 
         /* -------------------------------------------------------------------------
@@ -240,6 +244,24 @@ namespace solver
 
 
 
+        // template<typename PHARE_T>
+        void registerWorkLoadEstimator(int coarsestLevel, int finestLevel,
+                                       std::unique_ptr<PHARE::amr::IWorkLoadEstimator> workLoad)
+        {
+            if (!validLevelRange_(coarsestLevel, finestLevel))
+            {
+                throw std::runtime_error("invalid range level");
+            }
+            if (existWorkLoadOnRange_(coarsestLevel, finestLevel))
+            {
+                throw std::runtime_error(
+                    "error - level range contains levels with a registered workLoad");
+            }
+            addWorkLoad_(std::move(workLoad), coarsestLevel, finestLevel);
+        }
+
+
+
 
         std::string solverName(int const iLevel) const { return getSolver_(iLevel).name(); }
 
@@ -300,6 +322,7 @@ namespace solver
             auto& model            = getModel_(levelNumber);
             auto& solver           = getSolver_(levelNumber);
             auto& messenger        = getMessengerWithCoarser_(levelNumber);
+            auto& workload         = getWorkLoadEstimator(levelNumber);
             auto& levelInitializer = getLevelInitializer(model.name());
 
             bool const isRegridding = oldLevel != nullptr;
@@ -315,6 +338,7 @@ namespace solver
                     model.allocate(*patch, initDataTime);
                     solver.allocate(model, *patch, initDataTime);
                     messenger.allocate(*patch, initDataTime);
+                    workload.allocate(*patch, initDataTime);
                 }
             }
 
@@ -464,9 +488,10 @@ namespace solver
             auto iLevel = level->getLevelNumber();
             std::cout << "advanceLevel " << iLevel << " with dt = " << newTime - currentTime
                       << " from t = " << currentTime << "to t = " << newTime << "\n";
-            auto& solver      = getSolver_(iLevel);
-            auto& model       = getModel_(iLevel);
-            auto& fromCoarser = getMessengerWithCoarser_(iLevel);
+            auto& solver            = getSolver_(iLevel);
+            auto& model             = getModel_(iLevel);
+            auto& fromCoarser       = getMessengerWithCoarser_(iLevel);
+            auto& workLoadEstimator = getWorkLoadEstimator(iLevel);
 
 
             subcycleStartTimes_[iLevel] = currentTime;
@@ -494,6 +519,8 @@ namespace solver
             {
                 dump_(iLevel);
             }
+
+            workLoadEstimator.estimate(*level, model);
 
             return newTime;
         }
@@ -550,6 +577,19 @@ namespace solver
 
 
 
+        // template<typename PHARE_T>
+        PHARE::amr::IWorkLoadEstimator& getWorkLoadEstimator(int iLevel) const
+        {
+            auto& descriptor = levelDescriptors_[iLevel];
+            if (workLoads_[descriptor.workLoadIndex] == nullptr)
+            {
+                throw std::runtime_error("Error - no workload assigned to level "
+                                         + std::to_string(iLevel));
+            }
+            return *workLoads_[descriptor.workLoadIndex];
+        }
+
+
 
     private:
         bool restartInitialized_ = false;
@@ -566,6 +606,7 @@ namespace solver
         std::map<std::string, std::unique_ptr<LevelInitializerT>> levelInitializers_;
         SimFunctors const& simFuncs_;
         PHARE::initializer::PHAREDict const& dict_;
+        std::vector<std::shared_ptr<PHARE::amr::IWorkLoadEstimator>> workLoads_;
 
 
         bool validLevelRange_(int coarsestLevel, int finestLevel)
@@ -590,6 +631,20 @@ namespace solver
             return false;
         }
 
+
+
+
+        bool existWorkLoadOnRange_(int coarsestLevel, int finestLevel)
+        {
+            for (auto iLevel = coarsestLevel; iLevel <= finestLevel; ++iLevel)
+            {
+                if (levelDescriptors_[iLevel].workLoadIndex != LevelDescriptor::NOT_SET)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
 
 
 
@@ -663,6 +718,24 @@ namespace solver
             else
             {
                 throw std::runtime_error("solver " + solver->name() + " already registered");
+            }
+        }
+
+
+
+
+        void addWorkLoad_(std::unique_ptr<PHARE::amr::IWorkLoadEstimator> workLoad,
+                          int coarsestLevel, int finestLevel)
+        {
+            if (core::notIn(workLoad, workLoads_))
+            {
+                workLoads_.push_back(std::move(workLoad));
+
+                int workLoadIndex = workLoads_.size() - 1;
+                for (auto iLevel = coarsestLevel; iLevel <= finestLevel; ++iLevel)
+                {
+                    levelDescriptors_[iLevel].workLoadIndex = workLoadIndex;
+                }
             }
         }
 
@@ -831,7 +904,6 @@ namespace solver
             }
             return *taggers_[descriptor.taggerIndex];
         }
-
 
 
 
