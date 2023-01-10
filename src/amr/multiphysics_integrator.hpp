@@ -1,4 +1,3 @@
-
 #ifndef PHARE_MULTIPHYSICS_INTEGRATOR_HPP
 #define PHARE_MULTIPHYSICS_INTEGRATOR_HPP
 
@@ -51,7 +50,10 @@ namespace solver
     };
 
 
-    inline bool isRootLevel(int levelNumber) { return levelNumber == 0; }
+    inline bool isRootLevel(int levelNumber)
+    {
+        return levelNumber == 0;
+    }
 
 
     /**
@@ -380,7 +382,17 @@ namespace solver
             {
                 auto& messenger = getMessengerWithCoarser_(coarsestLevel);
                 for (auto ilvl = coarsestLevel; ilvl <= finestLevel; ++ilvl)
+                {
                     messenger.registerLevel(hierarchy, ilvl);
+                    auto level = hierarchy->getPatchLevel(ilvl);
+                    auto& wl   = getWorkLoadEstimator(ilvl);
+                    for (auto& patch : *level)
+                    {
+                        auto time = dict_["restarts"]["restart_time"].template to<double>();
+                        wl.allocate(*patch, time); // we need the proper time
+                    }
+                }
+
                 restartInitialized_ = true;
             }
         }

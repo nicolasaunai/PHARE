@@ -1,4 +1,3 @@
-
 #ifndef PHARE_WORKLOAD_HPP
 #define PHARE_WORKLOAD_HPP
 
@@ -19,8 +18,8 @@ namespace PHARE::amr
 class IWorkLoadEstimator
 {
 public:
-    virtual void estimate(SAMRAI::hier::PatchLevel,
-                          PHARE::solver::IPhysicalModel<PHARE::amr::SAMRAI_Types> const&)
+    virtual void estimate(SAMRAI::hier::PatchLevel& level,
+                          PHARE::solver::IPhysicalModel<PHARE::amr::SAMRAI_Types> const& model)
         = 0;
     virtual void set_strategy(std::string)                    = 0;
     virtual std::string name() const                          = 0;

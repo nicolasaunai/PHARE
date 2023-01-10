@@ -1,4 +1,3 @@
-
 #ifndef PHARE_HYBRID_WORKLOAD_HPP
 #define PHARE_HYBRID_WORKLOAD_HPP
 
@@ -33,8 +32,8 @@ public:
         this->variableDatabase_->removeVariable(this->workLoadName_);
     }
 
-    void estimate(SAMRAI::hier::PatchLevel, // double*,
-                  PHARE::solver::IPhysicalModel<PHARE::amr::SAMRAI_Types> const&) override;
+    void estimate(SAMRAI::hier::PatchLevel& level, // double*,
+                  PHARE::solver::IPhysicalModel<PHARE::amr::SAMRAI_Types> const& model) override;
 
     void set_strategy(std::string) override;
 
@@ -58,7 +57,7 @@ void HybridWorkLoadEstimator<PHARE_T>::set_strategy(std::string stratName)
 
 template<typename PHARE_T>
 void HybridWorkLoadEstimator<PHARE_T>::estimate(
-    SAMRAI::hier::PatchLevel level,
+    SAMRAI::hier::PatchLevel& level,
     PHARE::solver::IPhysicalModel<PHARE::amr::SAMRAI_Types> const& model)
 {
     auto& hybridModel = dynamic_cast<HybridModel const&>(model);
