@@ -14,6 +14,15 @@
 #include "core/data/ndarray/ndarray_vector.hpp"
 #include "amr/resources_manager/amr_utils.hpp"
 #include "core/utilities/point/point.hpp"
+#include "core/utilities/mpi_utils.hpp"
+
+
+
+// #define H5_FOR_LB 1
+
+#include <highfive/H5File.hpp>
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5DataSpace.hpp>
 
 
 namespace PHARE::amr
@@ -78,6 +87,24 @@ inline void LoadBalancerEstimatorHybrid<PHARE_T>::estim(
 
         // nbr of cells in the physical domain
         auto nbrCells = layout.nbrCells();
+
+
+#ifdef H5_FOR_LB
+
+        // this h5 part is just to write the dataset in order to draw an histogram
+        auto rank = PHARE::core::mpi::rank();
+        auto id   = patch->getLocalId();
+
+
+        using namespace HighFive;
+        std::string file_name = "lb.h5";
+        File file(file_name, File::ReadWrite | File::Create | File::Truncate);
+
+        const std::string ds_name("lb");
+
+        file.createDataSet(ds_name, load_balancer_val);
+
+#endif
 
 
         if constexpr (dimension == 1)
