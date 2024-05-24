@@ -19,10 +19,8 @@ from pyphare.simulator.simulator import Simulator
 
 from tests.simulator import SimulatorTest
 from tests.diagnostic import dump_all_diags
-from pyphare.pharesee.hierarchy import (
-    ParticleData,
-    get_all_available_quantities_from_h5,
-)
+from pyphare.pharesee.hierarchy.patchdata import ParticleData
+from pyphare.pharesee.hierarchy.fromh5 import get_all_available_quantities_from_h5
 
 
 def permute(dic, expected_num_levels):
