@@ -563,6 +563,29 @@ def finest_part_data(hierarchy, time=None):
 class PatchHierarchy(object):
     """is a collection of patch levels"""
 
+    def flat_name(self, qty):
+        name_dict = {
+            "rho": "scalar",
+            "tags": "scalar",
+            "Bx": "x",
+            "Ex": "x",
+            "Fx": "x",
+            "Vx": "x",
+            "By": "y",
+            "Ey": "y",
+            "Fy": "y",
+            "Vy": "y",
+            "Bz": "z",
+            "Ez": "z",
+            "Fz": "z",
+            "Vz": "z",
+        }
+
+        if qty in name_dict.keys():
+            return name_dict[qty]
+        else:
+            raise ValueError("{} is not a valid quantity".format(qty))
+
     def __init__(
         self,
         patch_levels,
@@ -572,10 +595,22 @@ class PatchHierarchy(object):
         data_files=None,
         **kwargs,
     ):
+        times = time
+        if not isinstance(times, (list, tuple)):
+            times = listify(time)
+
+        if not isinstance(patch_levels, (list, tuple)):
+            patch_levels = listify(patch_levels)
+
+        assert len(times) == len(patch_levels)
+
         self.patch_levels = patch_levels
         self.ndim = len(domain_box.lower)
         self.time_hier = {}
-        self.time_hier.update({self.format_timestamp(time): patch_levels})
+        # self.time_hier.update({self.format_timestamp(time): patch_levels})
+        self.time_hier.update(
+            {self.format_timestamp(t): pl for t, pl in zip(times, patch_levels)}
+        )
 
         self.domain_box = domain_box
         self.refinement_ratio = refinement_ratio
@@ -753,10 +788,10 @@ class PatchHierarchy(object):
             for patch in lvl.patches:
                 pd = patch.patch_datas[qty]
                 if first:
-                    m = pd.dataset[:].min()
+                    m = np.nanmin(pd.dataset[:])
                     first = False
                 else:
-                    m = min(m, pd.dataset[:].min())
+                    m = min(m, np.nanmin(pd.dataset[:]))
 
         return m
 
@@ -767,10 +802,10 @@ class PatchHierarchy(object):
             for patch in lvl.patches:
                 pd = patch.patch_datas[qty]
                 if first:
-                    m = pd.dataset[:].max()
+                    m = np.nanmax(pd.dataset[:])
                     first = False
                 else:
-                    m = max(m, pd.dataset[:].max())
+                    m = max(m, np.nanmax(pd.dataset[:]))
 
         return m
 
@@ -808,6 +843,9 @@ class PatchHierarchy(object):
                         )
                         s = s + "\n"
         return s
+
+    def get_names(self):
+        return list(self.levels()[0].patches[0].patch_datas.keys())
 
     def times(self):
         return np.sort(np.asarray(list(self.time_hier.keys())))
@@ -1088,6 +1126,453 @@ class PatchHierarchy(object):
 
         return final, dp(final, **kwargs)
 
+    def __neg__(self):
+        names_self = self.get_names()
+        h = compute_hier_from(_compute_neg, self, names=names_self)
+        return VectorField(h)
+
+
+def compute_rename(patch_datas, **kwargs):
+    new_names = kwargs["new_names"]
+    pd_attrs = []
+
+    for new_name, pd_name in zip(new_names, patch_datas):
+        pd_attrs.append(
+            {
+                "name": new_name,
+                "data": patch_datas[pd_name].dataset,
+                "centering": patch_datas[pd_name].centerings,
+            }
+        )
+
+    return tuple(pd_attrs)
+
+
+class ScalarField(PatchHierarchy):
+    def __init__(self, hier):
+        renamed_hier = compute_hier_from(compute_rename, hier, new_names=("value",))
+        patch_levels = renamed_hier.patch_levels
+        domain_box = renamed_hier.domain_box
+        refinement_ratio = renamed_hier.refinement_ratio
+        data_files = renamed_hier.data_files
+
+        super().__init__(
+            patch_levels, domain_box, refinement_ratio, renamed_hier.times(), data_files
+        )
+
+    def __add__(self, other):
+        assert isinstance(other, (ScalarField, int, float))
+        h_self = rename(self, ["self_value"])
+
+        if isinstance(other, ScalarField):
+            h_other = rename(other, ["other_value"])
+            h = compute_hier_from(
+                self._compute_add,
+                (h_self, h_other),
+            )
+        elif isinstance(other, (int, float)):
+            h = compute_hier_from(self._compute_add, (h_self,), other=other)
+            pass
+        else:
+            raise RuntimeError("right operand not supported")
+
+        return ScalarField(h)
+
+    def __sub__(self, other):
+        assert isinstance(other, (ScalarField, int, float))
+        h_self = rename(self, ["self_value"])
+
+        if isinstance(other, ScalarField):
+            h_other = rename(other, ["other_value"])
+            h = compute_hier_from(
+                self._compute_sub,
+                (h_self, h_other),
+            )
+        elif isinstance(other, (int, float)):
+            h = compute_hier_from(self._compute_sub, (h_self,), other=other)
+        else:
+            raise RuntimeError("right operand not supported")
+
+        return ScalarField(h)
+
+    def __mul__(self, other):
+        assert isinstance(other, (ScalarField, int, float))
+        h_self = rename(self, ["self_value"])
+
+        if isinstance(other, ScalarField):
+            h_other = rename(other, ["other_value"])
+            h = compute_hier_from(self._compute_mul, (h_self, h_other))
+        elif isinstance(other, (int, float)):
+            h = compute_hier_from(self._compute_mul, (h_self,), other=other)
+        else:
+            raise RuntimeError("right operand not supported")
+
+        return ScalarField(h)
+
+    def __rmul__(self, other):
+        return self.__mul__(other)
+
+    def __truediv__(self, other):
+        assert isinstance(other, (ScalarField, int, float))
+        h_self = rename(self, ["self_value"])
+
+        if isinstance(other, ScalarField):
+            h_other = rename(other, ["other_value"])
+            h = compute_hier_from(self._compute_truediv, (h_self, h_other))
+        elif isinstance(other, (int, float)):
+            h = compute_hier_from(self._compute_truediv, (h_self,), other=other)
+        else:
+            raise RuntimeError("right operand not supported")
+
+        return ScalarField(h)
+
+    def __rtruediv__(self, other):
+        assert isinstance(other, (int, float))
+        h_self = rename(self, ["self_value"])
+
+        h = compute_hier_from(self._compute_rtruediv, (h_self,), other=other)
+
+        return ScalarField(h)
+
+    def _compute_add(self, patch_datas, **kwargs):
+        ref_name = next(iter(patch_datas.keys()))
+
+        if "other" in kwargs:
+            other = kwargs["other"]
+            dset_value = patch_datas["self_value"].dataset[:] + other
+        else:
+            dset_value = (
+                patch_datas["self_value"].dataset[:]
+                + patch_datas["other_value"].dataset[:]
+            )
+
+        return (
+            {
+                "name": "value",
+                "data": dset_value,
+                "centering": patch_datas[ref_name].centerings,
+            },
+        )
+
+    def _compute_sub(self, patch_datas, **kwargs):
+        # subtract a scalar from the dataset of a scalarField
+        if "other" in kwargs:
+            other = kwargs["other"]
+            dset_value = patch_datas["self_value"].dataset[:] - other
+        # substraction of 2 scalarFields
+        else:
+            dset_value = (
+                patch_datas["self_value"].dataset[:]
+                - patch_datas["other_value"].dataset[:]
+            )
+
+        return (
+            {
+                "name": "value",
+                "data": dset_value,
+                "centering": patch_datas["self_value"].centerings,
+            },
+        )
+
+    def _compute_mul(self, patch_datas, **kwargs):
+        # multiplication of a scalarField by a scalar
+        if "other" in kwargs:
+            other = kwargs["other"]
+            pd_attrs = []
+
+            for pd_name in patch_datas:
+                pd_attrs.append(
+                    {
+                        "name": "value",
+                        "data": other * patch_datas[pd_name].dataset[:],
+                        "centering": patch_datas[pd_name].centerings,
+                    }
+                )
+        # multiplication of 2 scalarField
+        else:
+            dset_value = (
+                patch_datas["self_value"].dataset[:]
+                * patch_datas["other_value"].dataset[:]
+            )
+            pd_attrs = (
+                {
+                    "name": "value",
+                    "data": dset_value,
+                    "centering": patch_datas["self_value"].centerings,
+                },
+            )
+
+        return tuple(pd_attrs)
+
+    def _compute_truediv(self, patch_datas, **kwargs):
+        # multiplication of a scalarField by a scalar
+        if "other" in kwargs:
+            other = kwargs["other"]
+            pd_attrs = []
+
+            for pd_name in patch_datas:
+                pd_attrs.append(
+                    {
+                        "name": "value",
+                        "data": patch_datas[pd_name].dataset[:] / other,
+                        "centering": patch_datas[pd_name].centerings,
+                    }
+                )
+        # multiplication of 2 scalarField
+        else:
+            dset_value = (
+                patch_datas["self_value"].dataset[:]
+                / patch_datas["other_value"].dataset[:]
+            )
+            pd_attrs = (
+                {
+                    "name": "value",
+                    "data": dset_value,
+                    "centering": patch_datas["self_value"].centerings,
+                },
+            )
+
+        return tuple(pd_attrs)
+
+    def _compute_rtruediv(self, patch_datas, **kwargs):
+        # Scalar divided by a scalarField
+        other = kwargs["other"]
+        pd_attrs = []
+
+        for pd_name in patch_datas:
+            pd_attrs.append(
+                {
+                    "name": "value",
+                    "data": other / patch_datas[pd_name].dataset[:],
+                    "centering": patch_datas[pd_name].centerings,
+                }
+            )
+
+        return tuple(pd_attrs)
+
+
+class VectorField(PatchHierarchy):
+    def __init__(self, hier):
+        renamed_hier = compute_hier_from(
+            compute_rename, hier, new_names=("x", "y", "z")
+        )
+        patch_levels = renamed_hier.patch_levels
+        domain_box = renamed_hier.domain_box
+        refinement_ratio = renamed_hier.refinement_ratio
+        data_files = renamed_hier.data_files
+
+        self.names = ["x", "y", "z"]
+
+        super().__init__(
+            patch_levels, domain_box, refinement_ratio, renamed_hier.times(), data_files
+        )
+
+    def __mul__(self, other):
+        assert isinstance(other, (int, float))
+        h = compute_hier_from(_compute_mul, self, names=["x", "y", "z"], other=other)
+        return VectorField(h)
+
+    def __rmul__(self, other):
+        return self.__mul__(other)
+
+    def __add__(self, other):
+        names_self_kept = self.get_names()
+        names_other_kept = other.get_names()
+
+        if isinstance(other, VectorField):
+            names_self = ["self_x", "self_y", "self_z"]
+            names_other = ["other_x", "other_y", "other_z"]
+        else:
+            raise RuntimeError("type of hierarchy not yet considered")
+
+        h_self = rename(self, names_self)
+        h_other = rename(other, names_other)
+
+        h = compute_hier_from(
+            _compute_add,
+            (h_self, h_other),
+        )
+
+        self = rename(h_self, names_self_kept)  # needed ?
+        other = rename(h_other, names_other_kept)
+
+        return VectorField(h)
+
+    def __sub__(self, other):
+        names_self_kept = self.get_names()
+        names_other_kept = other.get_names()
+
+        if isinstance(other, VectorField):
+            names_self = ["self_x", "self_y", "self_z"]
+            names_other = ["other_x", "other_y", "other_z"]
+        else:
+            raise RuntimeError("type of hierarchy not yet considered")
+
+        h_self = rename(self, names_self)
+        h_other = rename(other, names_other)
+
+        h = compute_hier_from(
+            _compute_sub,
+            (h_self, h_other),
+        )
+
+        self = rename(h_self, names_self_kept)
+        other = rename(h_other, names_other_kept)
+
+        return VectorField(h)
+
+    def __truediv__(self, other):
+        if not isinstance(other, (ScalarField, int, float)):
+            raise RuntimeError("type of operand not considered")
+
+        if isinstance(other, ScalarField):
+            return VectorField(
+                compute_hier_from(
+                    _compute_truediv, (self, other), res_names=("x", "y", "z")
+                )
+            )
+        elif isinstance(other, (int, float)):
+            return VectorField(
+                compute_hier_from(
+                    _compute_scalardiv, (self,), res_names=("x", "y", "z"), scalar=other
+                )
+            )
+
+
+def _compute_mul(patch_datas, **kwargs):
+    names = kwargs["names"]
+
+    # multiplication of a scalarField or VectorField by a scalar
+    if "other" in kwargs:
+        other = kwargs["other"]
+        pd_attrs = []
+
+        for name, pd_name in zip(names, patch_datas):
+            pd_attrs.append(
+                {
+                    "name": name,
+                    "data": other * patch_datas[pd_name].dataset[:],
+                    "centering": patch_datas[pd_name].centerings,
+                }
+            )
+    # multiplication of 2 scalarField
+    elif "self_value" in patch_datas:
+        dset_value = (
+            patch_datas["self_value"].dataset[:] * patch_datas["other_value"].dataset[:]
+        )
+        pd_attrs = (
+            {
+                "name": "value",
+                "data": dset_value,
+                "centering": patch_datas["self_value"].centerings,
+            },
+        )
+
+    return tuple(pd_attrs)
+
+
+def _compute_add(patch_datas, **kwargs):
+    ref_name = next(iter(patch_datas.keys()))
+
+    dset_x = patch_datas["self_x"].dataset[:] + patch_datas["other_x"].dataset[:]
+    dset_y = patch_datas["self_y"].dataset[:] + patch_datas["other_y"].dataset[:]
+    dset_z = patch_datas["self_z"].dataset[:] + patch_datas["other_z"].dataset[:]
+
+    return (
+        {"name": "x", "data": dset_x, "centering": patch_datas[ref_name].centerings},
+        {"name": "y", "data": dset_y, "centering": patch_datas[ref_name].centerings},
+        {"name": "z", "data": dset_z, "centering": patch_datas[ref_name].centerings},
+    )
+
+
+def _compute_sub(patch_datas, **kwargs):
+    ref_name = next(iter(patch_datas.keys()))
+
+    dset_x = patch_datas["self_x"].dataset[:] - patch_datas["other_x"].dataset[:]
+    dset_y = patch_datas["self_y"].dataset[:] - patch_datas["other_y"].dataset[:]
+    dset_z = patch_datas["self_z"].dataset[:] - patch_datas["other_z"].dataset[:]
+
+    return (
+        {"name": "x", "data": dset_x, "centering": patch_datas[ref_name].centerings},
+        {"name": "y", "data": dset_y, "centering": patch_datas[ref_name].centerings},
+        {"name": "z", "data": dset_z, "centering": patch_datas[ref_name].centerings},
+    )
+
+
+def _compute_neg(patch_datas, **kwargs):
+    names = kwargs["names"]
+    pd_attrs = []
+
+    for name in names:
+        pd_attrs.append(
+            {
+                "name": name,
+                "data": -patch_datas[name].dataset,
+                "centering": patch_datas[name].centerings,
+            }
+        )
+
+    return tuple(pd_attrs)
+
+
+def _compute_truediv(patch_datas, **kwargs):
+    names = kwargs["res_names"]
+    pd_attrs = []
+
+    # the denominator is a scalar field which name is "value"
+    # hence the associated patchdata has to be removed from the list
+    # of patchdata from the vectorField of the numerator
+    left_ops = {k: v for k, v in patch_datas.items() if k != "value"}
+    right_op = patch_datas["value"]
+    for name, left_op in zip(names, left_ops.values()):
+        pd_attrs.append(
+            {
+                "name": name,
+                "data": left_op.dataset / right_op.dataset,
+                "centering": patch_datas[name].centerings,
+            }
+        )
+
+    return tuple(pd_attrs)
+
+
+def _compute_scalardiv(patch_datas, **kwargs):
+    names = kwargs["res_names"]
+    scalar = kwargs["scalar"]
+    pd_attrs = []
+
+    left_ops = {k: v for k, v in patch_datas.items()}
+    for name, left_op in zip(names, left_ops.values()):
+        pd_attrs.append(
+            {
+                "name": name,
+                "data": left_op.dataset / scalar,
+                "centering": patch_datas[name].centerings,
+            }
+        )
+
+    return tuple(pd_attrs)
+
+
+def _compute_rename(patch_datas, **kwargs):
+    new_names = kwargs["names"]
+    pd_attrs = []
+
+    for name, new_name in zip(patch_datas.keys(), new_names):
+        pd_attrs.append(
+            {
+                "name": new_name,
+                "data": patch_datas[name].dataset,
+                "centering": patch_datas[name].centerings,
+            }
+        )
+
+    return tuple(pd_attrs)
+
+
+def rename(hierarchy, names):
+    return compute_hier_from(_compute_rename, hierarchy, names=names)
+
 
 def amr_grid(hierarchy, time):
     """returns a non-uniform contiguous primal grid
@@ -1274,11 +1759,11 @@ def are_compatible_hierarchies(hierarchies):
     return True
 
 
-def extract_patchdatas(hierarchies, ilvl, ipatch):
+def extract_patchdatas(hierarchies, ilvl, ipatch, t):
     """
     returns a dict {patchdata_name:patchdata} from a list of hierarchies for patch ipatch at level ilvl
     """
-    patches = [h.patch_levels[ilvl].patches[ipatch] for h in hierarchies]
+    patches = [h.level(ilvl, t).patches[ipatch] for h in hierarchies]
     patch_datas = {
         pdname: pd for p in patches for pdname, pd in list(p.patch_datas.items())
     }
@@ -1294,14 +1779,14 @@ def new_patchdatas_from(compute, patchdatas, layout, id, **kwargs):
     return new_patch_datas
 
 
-def new_patches_from(compute, hierarchies, ilvl, **kwargs):
+def new_patches_from(compute, hierarchies, ilvl, t, **kwargs):
     reference_hier = hierarchies[0]
     new_patches = []
-    patch_nbr = len(reference_hier.patch_levels[ilvl].patches)
+    patch_nbr = len(reference_hier.level(ilvl, t).patches)
     for ip in range(patch_nbr):
-        current_patch = reference_hier.patch_levels[ilvl].patches[ip]
+        current_patch = reference_hier.level(ilvl, t).patches[ip]
         layout = current_patch.layout
-        patch_datas = extract_patchdatas(hierarchies, ilvl, ip)
+        patch_datas = extract_patchdatas(hierarchies, ilvl, ip, t)
         new_patch_datas = new_patchdatas_from(
             compute, patch_datas, layout, id=current_patch.id, **kwargs
         )
@@ -1319,11 +1804,12 @@ def compute_hier_from(compute, hierarchies, **kwargs):
     hierarchies = listify(hierarchies)
     reference_hier = hierarchies[0]
     domain_box = reference_hier.domain_box
-    patch_levels = {}
-    for ilvl in range(reference_hier.levelNbr()):
-        patch_levels[ilvl] = PatchLevel(
-            ilvl, new_patches_from(compute, hierarchies, ilvl, **kwargs)
-        )
+    patch_levels = [{}] * len(reference_hier.times())
+    for it, t in enumerate(reference_hier.times()):
+        for ilvl in range(reference_hier.levelNbr()):
+            patch_levels[it][ilvl] = PatchLevel(
+                ilvl, new_patches_from(compute, hierarchies, ilvl, t, **kwargs)
+            )
 
     assert len(reference_hier.time_hier) == 1  # only single time hierarchies now
     t = list(reference_hier.time_hier.keys())[0]

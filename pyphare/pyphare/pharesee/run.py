@@ -1,11 +1,15 @@
 import os
 import numpy as np
 
-from .hierarchy import (
+from pyphare.pharesee.hierarchy import (
     compute_hier_from,
     flat_finest_field,
     hierarchy_from,
+    ScalarField,
+    VectorField,
 )
+
+from pyphare.core.gridlayout import yee_centering
 from pyphare.logger import getLogger
 
 logger = getLogger(__name__)
@@ -134,6 +138,227 @@ def _compute_divB(patchdatas, **kwargs):
         raise RuntimeError("dimension not implemented")
 
 
+def _ppp_to_ppp_domain_slicing(**kwargs):
+    """
+    return the slicing for (primal,primal,primal) to (primal,primal,primal)
+    centering that is the centering of moments on a Yee grid
+    """
+
+    nb_ghosts = kwargs["nb_ghosts"]
+    ndim = kwargs["ndim"]
+
+    inner, _, _ = _inner_slices(nb_ghosts)
+
+    inner_all = tuple([inner] * ndim)
+    return inner_all, (inner_all,)
+
+
+def _pdd_to_ppp_domain_slicing(**kwargs):
+    """
+    return the slicing for (dual,primal,primal) to (primal,primal,primal)
+    centering that is the centering of Bx on a Yee grid
+    """
+
+    nb_ghosts = kwargs["nb_ghosts"]
+    ndim = kwargs["ndim"]
+
+    inner, inner_shift_left, inner_shift_right = _inner_slices(nb_ghosts)
+
+    if ndim == 1:
+        inner_all = tuple([inner] * ndim)
+        return inner_all, (inner_all,)
+    elif ndim == 2:
+        inner_all = tuple([inner] * ndim)
+        return inner_all, ((inner, inner_shift_left), (inner, inner_shift_right))
+    else:
+        raise RuntimeError("dimension not yet implemented")
+
+
+def _dpd_to_ppp_domain_slicing(**kwargs):
+    """
+    return the slicing for (dual,primal,primal) to (primal,primal,primal)
+    centering that is the centering of By on a Yee grid
+    """
+
+    nb_ghosts = kwargs["nb_ghosts"]
+    ndim = kwargs["ndim"]
+
+    inner, inner_shift_left, inner_shift_right = _inner_slices(nb_ghosts)
+
+    if ndim == 1:
+        inner_all = tuple([inner] * ndim)
+        return inner_all, (inner_shift_left, inner_shift_right)
+    elif ndim == 2:
+        inner_all = tuple([inner] * ndim)
+        return inner_all, ((inner_shift_left, inner), (inner_shift_right, inner))
+    else:
+        raise RuntimeError("dimension not yet implemented")
+
+
+def _ddp_to_ppp_domain_slicing(**kwargs):
+    """
+    return the slicing for (dual,primal,primal) to (primal,primal,primal)
+    centering that is the centering of Bz on a Yee grid
+    """
+
+    nb_ghosts = kwargs["nb_ghosts"]
+    ndim = kwargs["ndim"]
+
+    inner, inner_shift_left, inner_shift_right = _inner_slices(nb_ghosts)
+
+    if ndim == 1:
+        inner_all = tuple([inner] * ndim)
+        return inner_all, (inner_shift_left, inner_shift_right)
+    elif ndim == 2:
+        inner_all = tuple([inner] * ndim)
+        return inner_all, (
+            (inner_shift_left, inner_shift_left),
+            (inner_shift_left, inner_shift_right),
+            (inner_shift_right, inner_shift_left),
+            (inner_shift_right, inner_shift_right),
+        )
+    else:
+        raise RuntimeError("dimension not yet implemented")
+
+
+def _dpp_to_ppp_domain_slicing(**kwargs):
+    """
+    return the slicing for (dual,primal,primal) to (primal,primal,primal)
+    centering that is the centering of Ex on a Yee grid
+    """
+
+    nb_ghosts = kwargs["nb_ghosts"]
+    ndim = kwargs["ndim"]
+
+    inner, inner_shift_left, inner_shift_right = _inner_slices(nb_ghosts)
+
+    if ndim == 1:
+        inner_all = tuple([inner] * ndim)
+        return inner_all, (inner_shift_left, inner_shift_right)
+    elif ndim == 2:
+        inner_all = tuple([inner] * ndim)
+        return inner_all, ((inner_shift_left, inner), (inner_shift_right, inner))
+    else:
+        raise RuntimeError("dimension not yet implemented")
+
+
+def _pdp_to_ppp_domain_slicing(**kwargs):
+    """
+    return the slicing for (dual,primal,primal) to (primal,primal,primal)
+    centering that is the centering of Ey on a Yee grid
+    """
+
+    nb_ghosts = kwargs["nb_ghosts"]
+    ndim = kwargs["ndim"]
+
+    inner, inner_shift_left, inner_shift_right = _inner_slices(nb_ghosts)
+
+    if ndim == 1:
+        inner_all = tuple([inner] * ndim)
+        return inner_all, (inner_all,)
+    elif ndim == 2:
+        inner_all = tuple([inner] * ndim)
+        return inner_all, ((inner, inner_shift_left), (inner, inner_shift_right))
+    else:
+        raise RuntimeError("dimension not yet implemented")
+
+
+def _ppd_to_ppp_domain_slicing(**kwargs):
+    """
+    return the slicing for (dual,primal,primal) to (primal,primal,primal)
+    centering that is the centering of Ez on a Yee grid
+    """
+
+    nb_ghosts = kwargs["nb_ghosts"]
+    ndim = kwargs["ndim"]
+
+    inner, _, _ = _inner_slices(nb_ghosts)
+
+    if ndim == 1:
+        inner_all = tuple([inner] * ndim)
+        return inner_all, (inner_all,)
+    elif ndim == 2:
+        inner_all = tuple([inner] * ndim)
+        return inner_all, (inner_all,)
+    else:
+        raise RuntimeError("dimension not yet implemented")
+
+
+slices_to_primal_ = {
+    "primal_primal_primal": _ppp_to_ppp_domain_slicing,
+    "primal_dual_dual": _pdd_to_ppp_domain_slicing,
+    "dual_primal_dual": _dpd_to_ppp_domain_slicing,
+    "dual_dual_primal": _ddp_to_ppp_domain_slicing,
+    "dual_primal_primal": _dpp_to_ppp_domain_slicing,
+    "primal_dual_primal": _pdp_to_ppp_domain_slicing,
+    "primal_primal_dual": _ppd_to_ppp_domain_slicing,
+}
+
+
+def merge_centerings(pdname):
+    from pyphare.core.gridlayout import directions
+
+    return "_".join([yee_centering[d][pdname] for d in directions])
+
+
+def slices_to_primal(pdname, **kwargs):
+    return slices_to_primal_[merge_centerings(pdname)](**kwargs)
+
+
+def _compute_to_primal(patchdatas, **kwargs):
+    """
+    datasets have NaN in their ghosts... might need to be properly filled
+    with their neighbors already properly projected on primal
+    """
+
+    reference_name = next(iter(kwargs.values()))
+    reference_pd = patchdatas[reference_name]
+    nb_ghosts = reference_pd.layout.nbrGhosts(
+        reference_pd.layout.interp_order, "primal"
+    )
+    ndim = reference_pd.box.ndim
+
+    centerings = ["primal"] * ndim
+
+    pd_attrs = []
+    for name, pd_name in kwargs.items():
+        pd = patchdatas[pd_name]
+
+        ds = pd.dataset
+
+        ds_shape = list(ds.shape)
+        for i in range(ndim):
+            if pd.centerings[i] == "dual":
+                ds_shape[i] += 1
+
+        # should be something else than nan values when the ghosts cells
+        # will be filled with correct values coming from the neighbors
+        ds_all_primal = np.full(ds_shape, np.nan)
+        ds_ = np.zeros(ds_shape)
+
+        # inner is the slice containing the points that are updated
+        # in the all_primal dataset
+        # chunks is a tupls of all the slices coming from the initial dataset
+        # that are needed to calculate the average for the all_primal dataset
+        inner, chunks = slices_to_primal(pd_name, nb_ghosts=nb_ghosts, ndim=ndim)
+
+        for chunk in chunks:
+            ds_[inner] = np.add(ds_[inner], ds[chunk] / len(chunks))
+        ds_all_primal[inner] = ds_[inner]
+
+        pd_attrs.append({"name": name, "data": ds_all_primal, "centering": centerings})
+
+    return tuple(pd_attrs)
+
+
+def _inner_slices(nb_ghosts):
+    inner = slice(nb_ghosts, -nb_ghosts)
+    inner_shift_left = slice(nb_ghosts - 1, -nb_ghosts)
+    inner_shift_right = slice(nb_ghosts, -nb_ghosts + 1)
+
+    return inner, inner_shift_left, inner_shift_right
+
+
 def _get_rank(patchdatas, **kwargs):
     """
     make a field dataset cell centered coding the MPI rank
@@ -141,7 +366,7 @@ def _get_rank(patchdatas, **kwargs):
     """
     from pyphare.core.box import grow
 
-    reference_pd = patchdatas["Bx"]  # take Bx as a reference, but could be any other
+    reference_pd = patchdatas["Bx"]  # Bx as a ref, but could be any other
     ndim = reference_pd.box.ndim
     pid = kwargs["id"]
 
@@ -325,35 +550,44 @@ class Run:
 
     def GetTags(self, time, merged=False):
         hier = self._get_hierarchy(time, "tags.h5")
-        return self._get(hier, time, merged, "nearest")
+        return ScalarField(self._get(hier, time, merged, "nearest"))
+        # return self._get(hier, time, merged, "nearest")
 
-    def GetB(self, time, merged=False, interp="nearest"):
+    def GetB(self, time, merged=False, interp="nearest", all_primal=True):
         hier = self._get_hierarchy(time, "EM_B.h5")
-        return self._get(hier, time, merged, interp)
+        if not all_primal:
+            return self._get(hier, time, merged, interp)
 
-    def GetE(self, time, merged=False, interp="nearest"):
+        h = compute_hier_from(_compute_to_primal, hier, x="Bx", y="By", z="Bz")
+        return VectorField(h)
+
+    def GetE(self, time, merged=False, interp="nearest", all_primal=True):
         hier = self._get_hierarchy(time, "EM_E.h5")
-        return self._get(hier, time, merged, interp)
+        if not all_primal:
+            return self._get(hier, time, merged, interp)
+
+        h = compute_hier_from(_compute_to_primal, hier, x="Ex", y="Ey", z="Ez")
+        return VectorField(h)
 
     def GetMassDensity(self, time, merged=False, interp="nearest"):
         hier = self._get_hierarchy(time, "ions_mass_density.h5")
-        return self._get(hier, time, merged, interp)
+        return ScalarField(self._get(hier, time, merged, interp))
 
     def GetNi(self, time, merged=False, interp="nearest"):
         hier = self._get_hierarchy(time, "ions_density.h5")
-        return self._get(hier, time, merged, interp)
+        return ScalarField(self._get(hier, time, merged, interp))
 
     def GetN(self, time, pop_name, merged=False, interp="nearest"):
         hier = self._get_hierarchy(time, f"ions_pop_{pop_name}_density.h5")
-        return self._get(hier, time, merged, interp)
+        return ScalarField(self._get(hier, time, merged, interp))
 
     def GetVi(self, time, merged=False, interp="nearest"):
         hier = self._get_hierarchy(time, "ions_bulkVelocity.h5")
-        return self._get(hier, time, merged, interp)
+        return VectorField(self._get(hier, time, merged, interp))
 
     def GetFlux(self, time, pop_name, merged=False, interp="nearest"):
         hier = self._get_hierarchy(time, f"ions_pop_{pop_name}_flux.h5")
-        return self._get(hier, time, merged, interp)
+        return VectorField(self._get(hier, time, merged, interp))
 
     def GetPressure(self, time, pop_name, merged=False, interp="nearest"):
         M = self._get_hierarchy(time, f"ions_pop_{pop_name}_momentum_tensor.h5")
@@ -365,24 +599,38 @@ class Run:
             popname=pop_name,
             mass=self.GetMass(pop_name),
         )
-        return self._get(P, time, merged, interp)
+        return self._get(P, time, merged, interp)  # should later be a TensorField
 
     def GetPi(self, time, merged=False, interp="nearest"):
         M = self._get_hierarchy(time, f"ions_momentum_tensor.h5")
         massDensity = self.GetMassDensity(time)
         Vi = self._get_hierarchy(time, f"ions_bulkVelocity.h5")
         Pi = compute_hier_from(_compute_pressure, (M, massDensity, Vi))
-        return self._get(Pi, time, merged, interp)
+        return self._get(Pi, time, merged, interp)  # should later be a TensorField
 
-    def GetJ(self, time, merged=False, interp="nearest"):
-        B = self.GetB(time)
+    def GetPe(self, time, merged=False, interp="nearest", all_primal=True):
+        hier = self._get_hierarchy(time, "ions_density.h5")
+
+        Te = hier.sim.electrons.closure.Te
+
+        if not all_primal:
+            return Te * self._get(hier, time, merged, interp)
+
+        h = compute_hier_from(_compute_to_primal, hier, scalar="rho")
+        return ScalarField(h) * Te
+
+    def GetJ(self, time, merged=False, interp="nearest", all_primal=True):
+        B = self.GetB(time, all_primal=False)
         J = compute_hier_from(_compute_current, B)
-        return self._get(J, time, merged, interp)
+        if not all_primal:
+            return self._get(J, time, merged, interp)
+        h = compute_hier_from(_compute_to_primal, J, x="Jx", y="Jy", z="Jz")
+        return VectorField(h)
 
     def GetDivB(self, time, merged=False, interp="nearest"):
-        B = self.GetB(time)
+        B = self.GetB(time, all_primal=False)
         db = compute_hier_from(_compute_divB, B)
-        return self._get(db, time, merged, interp)
+        return ScalarField(self._get(db, time, merged, interp))
 
     def GetRanks(self, time, merged=False, interp="nearest"):
         """
@@ -393,7 +641,7 @@ class Run:
         """
         B = self.GetB(time)
         ranks = compute_hier_from(_get_rank, B)
-        return self._get(ranks, time, merged, interp)
+        return ScalarField(self._get(ranks, time, merged, interp))
 
     def GetParticles(self, time, pop_name, hier=None):
         def filename(name):
@@ -462,8 +710,9 @@ class Run:
 
         return root_cell_width / fac
 
-    def GetAllAvailableQties(self, time=0, pops=[]):
-        assert self.single_hier_for_all_quantities  # can't work otherwise
+    def GetAllAvailableQties(self, time=0, pops=[], all_primal=True):
+        assert not all_primal
+        assert self.single_hier_for_all_quantities == True  # can't work otherwise
 
         def _try(fn, *args, **kwargs):
             try:
@@ -473,9 +722,9 @@ class Run:
                 logger.debug(f"No file for function {fn.__name__}")
 
         _try(self.GetParticles, time, pops)
-        _try(self.GetB, time)
-        _try(self.GetE, time)
-        _try(self.GetNi, time)
+        _try(self.GetB, time, all_primal=all_primal)
+        _try(self.GetE, time, all_primal=all_primal)
+        _try(self.GetNi, time, all_primal=all_primal)
         _try(self.GetVi, time)
 
         for pop in pops:
