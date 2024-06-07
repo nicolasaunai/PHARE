@@ -2,6 +2,7 @@ import os
 
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 from ..core import box as boxm
 from ..core.box import Box
@@ -560,6 +561,12 @@ def finest_part_data(hierarchy, time=None):
     return particles
 
 
+def _format_timestamp(timestamp):
+    if isinstance(timestamp, str):
+        return timestamp
+    return "{:.10f}".format(timestamp)
+
+
 class PatchHierarchy(object):
     """is a collection of patch levels"""
 
@@ -817,9 +824,7 @@ class PatchHierarchy(object):
         return boxm.refine(self.domain_box, self.refinement_ratio**level_number)
 
     def format_timestamp(self, timestamp):
-        if isinstance(timestamp, str):
-            return timestamp
-        return "{:.10f}".format(timestamp)
+        return _format_timestamp(timestamp)
 
     def level_domain_box(self, level_number):
         if level_number == 0:
@@ -1772,7 +1777,7 @@ def extract_patchdatas(hierarchies, ilvl, ipatch, t):
 
 def new_patchdatas_from(compute, patchdatas, layout, id, **kwargs):
     new_patch_datas = {}
-    datas = compute(patchdatas, id=id, **kwargs)
+    datas = compute(patchdatas, patch_id=id, **kwargs)
     for data in datas:
         pd = FieldData(layout, data["name"], data["data"], centering=data["centering"])
         new_patch_datas[data["name"]] = pd
@@ -2278,3 +2283,13 @@ def getPatch(hier, point):
             print("error : ", k, v)
             raise RuntimeError("more than one patch found for point")
     return patches
+
+
+def get_all_available_quantities_from_h5(filepath, time=0, exclude=["tags"]):
+    time = _format_timestamp(time)
+    hier = None
+    path = Path(filepath)
+    for h5 in path.glob("*.h5"):
+        if h5.parent == path and h5.stem not in exclude:
+            hier = hierarchy_fromh5(str(h5), time, hier)
+    return hier

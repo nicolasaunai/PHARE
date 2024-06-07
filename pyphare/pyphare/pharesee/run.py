@@ -305,7 +305,7 @@ def slices_to_primal(pdname, **kwargs):
     return slices_to_primal_[merge_centerings(pdname)](**kwargs)
 
 
-def _compute_to_primal(patchdatas, **kwargs):
+def _compute_to_primal(patchdatas, patch_id, **kwargs):
     """
     datasets have NaN in their ghosts... might need to be properly filled
     with their neighbors already properly projected on primal
@@ -359,7 +359,7 @@ def _inner_slices(nb_ghosts):
     return inner, inner_shift_left, inner_shift_right
 
 
-def _get_rank(patchdatas, **kwargs):
+def _get_rank(patchdatas, patch_id, **kwargs):
     """
     make a field dataset cell centered coding the MPI rank
     rank is obtained from patch global id == "rank#local_patch_id"
@@ -368,7 +368,6 @@ def _get_rank(patchdatas, **kwargs):
 
     reference_pd = patchdatas["Bx"]  # Bx as a ref, but could be any other
     ndim = reference_pd.box.ndim
-    pid = kwargs["id"]
 
     layout = reference_pd.layout
     centering = "dual"
@@ -379,7 +378,7 @@ def _get_rank(patchdatas, **kwargs):
         pass
 
     elif ndim == 2:
-        data = np.zeros(shape) + int(pid.strip("p").split("#")[0])
+        data = np.zeros(shape) + int(patch_id.strip("p").split("#")[0])
         return ({"name": "rank", "data": data, "centering": [centering] * 2},)
     else:
         raise RuntimeError("Not Implemented yet")
@@ -505,10 +504,8 @@ def make_interpolator(data, coords, interp, domain, dl, qty, nbrGhosts):
 
 
 class Run:
-    def __init__(self, path, single_hier_for_all_quantities=False):
+    def __init__(self, path):
         self.path = path
-        self.single_hier_for_all_quantities = single_hier_for_all_quantities
-        self.hier = None  # only used if single_hier_for_all_quantities == True
 
     def _get_hierarchy(self, time, filename, hier=None):
         t = "{:.10f}".format(time)
@@ -518,9 +515,6 @@ class Run:
                 h5_filename=os.path.join(self.path, filename), time=t, hier=h
             )
 
-        if self.single_hier_for_all_quantities:
-            self.hier = _get_hier(self.hier)
-            return self.hier
         return _get_hier(hier)
 
     def _get(self, hierarchy, time, merged, interp):
@@ -639,7 +633,7 @@ class Run:
         this fails if the magnetic field is not written and could at some point
         be replace by a search of any available diag at the requested time.
         """
-        B = self.GetB(time)
+        B = self.GetB(time, all_primal=False)
         ranks = compute_hier_from(_get_rank, B)
         return ScalarField(self._get(ranks, time, merged, interp))
 
@@ -709,26 +703,3 @@ class Run:
         root_cell_width = np.asarray(data_file.attrs["cell_width"])
 
         return root_cell_width / fac
-
-    def GetAllAvailableQties(self, time=0, pops=[], all_primal=True):
-        assert not all_primal
-        assert self.single_hier_for_all_quantities == True  # can't work otherwise
-
-        def _try(fn, *args, **kwargs):
-            try:
-                fn(*args, **kwargs)
-            except FileNotFoundError:
-                # normal to not have a diagnostic if not requested
-                logger.debug(f"No file for function {fn.__name__}")
-
-        _try(self.GetParticles, time, pops)
-        _try(self.GetB, time, all_primal=all_primal)
-        _try(self.GetE, time, all_primal=all_primal)
-        _try(self.GetNi, time, all_primal=all_primal)
-        _try(self.GetVi, time)
-
-        for pop in pops:
-            _try(self.GetFlux, time, pop)
-            _try(self.GetN, time, pop)
-
-        return self.hier

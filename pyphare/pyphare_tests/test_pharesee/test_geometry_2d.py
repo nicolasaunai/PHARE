@@ -297,7 +297,7 @@ class GeometryTest(AGeometryTest):
                 assert len(gaboxes_list) > 0
                 for pdatainfo in gaboxes_list:
                     for box in pdatainfo["boxes"]:
-                        for patch in hierarchy.patch_levels[ilvl].patches:
+                        for patch in hierarchy.level(ilvl).patches:
                             self.assertIsNone(patch.box * box)
 
 
