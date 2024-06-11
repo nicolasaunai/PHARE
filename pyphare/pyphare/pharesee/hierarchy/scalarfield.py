@@ -26,7 +26,6 @@ class ScalarField(PatchHierarchy):
             )
         elif isinstance(other, (int, float)):
             h = compute_hier_from(self._compute_add, (h_self,), other=other)
-            pass
         else:
             raise RuntimeError("right operand not supported")
 

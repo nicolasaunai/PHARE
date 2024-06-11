@@ -1,9 +1,13 @@
-from .fromh5 import hierarchy_fromh5
-from .fromsim import hierarchy_from_sim
 from .scalarfield import ScalarField
 from .vectorfield import VectorField
 from .hierarchy import PatchHierarchy
 from pyphare.core.phare_utilities import listify
+
+__all__ = [
+    "ScalarField",
+    "VectorField",
+    "PatchHierarchy",
+]
 
 
 def hierarchy_from(

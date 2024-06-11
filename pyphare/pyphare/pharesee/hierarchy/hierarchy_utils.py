@@ -431,7 +431,7 @@ def compute_rename(patch_datas, **kwargs):
 
 
 def rename(hierarchy, names):
-    return compute_hier_from(_compute_rename, hierarchy, names=names)
+    return compute_hier_from(compute_rename, hierarchy, names=names)
 
 
 def _compute_mul(patch_datas, **kwargs):

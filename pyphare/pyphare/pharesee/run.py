@@ -7,7 +7,6 @@ from pyphare.pharesee.hierarchy import ScalarField, VectorField
 from pyphare.core.gridlayout import yee_centering
 from .hierarchy.hierarchy_utils import compute_hier_from
 from .hierarchy.hierarchy_utils import flat_finest_field
-from .hierarchy import hierarchy_from
 from pyphare.core.phare_utilities import listify
 
 from pyphare.logger import getLogger
@@ -613,9 +612,9 @@ class Run:
         return self._get(P, time, merged, interp)  # should later be a TensorField
 
     def GetPi(self, time, merged=False, interp="nearest", **kwargs):
-        M = self._get_hierarchy(time, f"ions_momentum_tensor.h5", **kwargs)
+        M = self._get_hierarchy(time, "ions_momentum_tensor.h5", **kwargs)
         massDensity = self.GetMassDensity(time, **kwargs)
-        Vi = self._get_hierarchy(time, f"ions_bulkVelocity.h5", **kwargs)
+        Vi = self._get_hierarchy(time, "ions_bulkVelocity.h5", **kwargs)
         Pi = compute_hier_from(_compute_pressure, (M, massDensity, Vi))
         return self._get(Pi, time, merged, interp)  # should later be a TensorField
 
