@@ -1,5 +1,5 @@
 import unittest
-from ddt import ddt, data, unpack
+from ddt import ddt
 import numpy as np
 
 from pyphare.simulator.simulator import Simulator
@@ -18,7 +18,6 @@ timestamps = dt * np.arange(nt)
 
 @ddt
 class PatchHierarchyTest(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
         from pyphare.pharein import global_vars

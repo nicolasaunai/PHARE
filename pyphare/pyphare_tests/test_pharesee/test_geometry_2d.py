@@ -9,7 +9,6 @@ from pyphare.pharesee.geometry import (
     ghost_area_boxes,
     get_periodic_list,
 )
-from pyphare.core.gridlayout import GridLayout, yee_element_is_primal
 
 from pyphare_tests.test_pharesee import build_hierarchy
 
@@ -163,7 +162,6 @@ class GeometryTest(AGeometryTest):
 
         level_overlaps = hierarchy_overlaps(hierarchy)
         ilvl = 0
-        lvl = hierarchy.level(ilvl)
         overlap_boxes = []
 
         self.assertEqual(len(expected), len(level_overlaps[ilvl]))

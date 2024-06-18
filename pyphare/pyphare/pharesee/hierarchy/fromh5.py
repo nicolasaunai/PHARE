@@ -20,6 +20,7 @@ from pathlib import Path
 from pyphare.core.phare_utilities import listify
 
 
+h5_time_grp_key = "t"
 particle_files_patterns = ("domain", "patchGhost", "levelGhost")
 
 
@@ -129,17 +130,13 @@ def h5_filename_from(diagInfo):
 
 
 def get_times_from_h5(filepath, as_float=True):
-
     f = h5py.File(filepath, "r")
     if as_float:
-        times = np.array(sorted([float(s) for s in list(f["t"].keys())]))
+        times = np.array(sorted([float(s) for s in list(f[h5_time_grp_key].keys())]))
     else:
-        times = list(f["t"].keys())
+        times = list(f[h5_time_grp_key].keys())
     f.close()
     return times
-
-
-h5_time_grp_key = "t"
 
 
 def create_from_all_times(time, hier):
@@ -163,7 +160,6 @@ def patch_levels_from_h5(h5f, time, selection_box=None):
     creates a dictionary of PatchLevels from a given time in a h5 file
     {ilvl: PatchLevel}
     """
-    import os
 
     root_cell_width = h5f.attrs["cell_width"]
     interp_order = h5f.attrs["interpOrder"]
@@ -171,8 +167,7 @@ def patch_levels_from_h5(h5f, time, selection_box=None):
 
     patch_levels = {}
 
-    for lvl_key, lvl in h5f["t"][time].items():
-
+    for lvl_key, lvl in h5f[h5_time_grp_key][time].items():
         ilvl = int(lvl_key[2:])  # pl1-->1
         lvl_cell_width = root_cell_width / refinement_ratio**ilvl
 
@@ -322,5 +317,4 @@ def hierarchy_fromh5(h5_filename, time=None, hier=None, silent=True, **kwargs):
             add_time_from_h5(hier, h5_filename, t, **kwargs)
         return hier
 
-    print("SHOULD NOT BE THERE : ", time, hier)
     assert False

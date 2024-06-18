@@ -9,9 +9,9 @@ def _compute_dot_product(patch_datas, **kwargs):
     ref_name = next(iter(patch_datas.keys()))
 
     dset = (
-        patch_datas["left_x"].dataset[:] * patch_datas["right_x"].dataset[:]
-        + patch_datas["left_y"].dataset[:] * patch_datas["right_y"].dataset[:]
-        + patch_datas["left_z"].dataset[:] * patch_datas["right_z"].dataset[:]
+        patch_datas["left_x"][:] * patch_datas["right_x"][:]
+        + patch_datas["left_y"][:] * patch_datas["right_y"][:]
+        + patch_datas["left_z"][:] * patch_datas["right_z"][:]
     )
 
     return (
@@ -22,7 +22,7 @@ def _compute_dot_product(patch_datas, **kwargs):
 def _compute_sqrt(patch_datas, **kwargs):
     ref_name = next(iter(patch_datas.keys()))
 
-    dset = np.sqrt(patch_datas["value"].dataset[:])
+    dset = np.sqrt(patch_datas["value"][:])
 
     return (
         {"name": "value", "data": dset, "centering": patch_datas[ref_name].centerings},
@@ -33,16 +33,16 @@ def _compute_cross_product(patch_datas, **kwargs):
     ref_name = next(iter(patch_datas.keys()))
 
     dset_x = (
-        patch_datas["left_y"].dataset[:] * patch_datas["right_z"].dataset[:]
-        - patch_datas["left_z"].dataset[:] * patch_datas["right_y"].dataset[:]
+        patch_datas["left_y"][:] * patch_datas["right_z"][:]
+        - patch_datas["left_z"][:] * patch_datas["right_y"][:]
     )
     dset_y = (
-        patch_datas["left_z"].dataset[:] * patch_datas["right_x"].dataset[:]
-        - patch_datas["left_x"].dataset[:] * patch_datas["right_z"].dataset[:]
+        patch_datas["left_z"][:] * patch_datas["right_x"][:]
+        - patch_datas["left_x"][:] * patch_datas["right_z"][:]
     )
     dset_z = (
-        patch_datas["left_x"].dataset[:] * patch_datas["right_y"].dataset[:]
-        - patch_datas["left_y"].dataset[:] * patch_datas["right_x"].dataset[:]
+        patch_datas["left_x"][:] * patch_datas["right_y"][:]
+        - patch_datas["left_y"][:] * patch_datas["right_x"][:]
     )
 
     return (
@@ -64,17 +64,11 @@ def _compute_grad(patch_data, **kwargs):
     ds_z = np.full(ds_shape, np.nan)
 
     grad_ds = np.gradient(ds)
-
+    select = tuple([slice(nb_ghosts, -nb_ghosts) for _ in range(ndim)])
     if ndim == 2:
-        ds_x[nb_ghosts:-nb_ghosts, nb_ghosts:-nb_ghosts] = np.asarray(
-            grad_ds[0][nb_ghosts:-nb_ghosts, nb_ghosts:-nb_ghosts]
-        )
-        ds_y[nb_ghosts:-nb_ghosts, nb_ghosts:-nb_ghosts] = np.asarray(
-            grad_ds[1][nb_ghosts:-nb_ghosts, nb_ghosts:-nb_ghosts]
-        )
-        ds_z[nb_ghosts:-nb_ghosts, nb_ghosts:-nb_ghosts].fill(
-            0.0
-        )  # TODO at 2D, gradient is null in z dir
+        ds_x[select] = np.asarray(grad_ds[0][select])
+        ds_y[select] = np.asarray(grad_ds[1][select])
+        ds_z[select].fill(0.0)  # TODO at 2D, gradient is null in z dir
 
     else:
         raise RuntimeError("dimension not yet implemented")

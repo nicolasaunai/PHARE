@@ -104,8 +104,10 @@ class FieldData(PatchData):
                 return self.dataset[lower[0] : upper[0] + 1, lower[1] : upper[1] + 1]
         return np.array([])
 
-    def __getitem__(self, box):
-        return self.select(box)
+    def __getitem__(self, box_or_slice):
+        if isinstance(box_or_slice, slice):
+            return self.dataset[box_or_slice]
+        return self.select(box_or_slice)
 
     def __init__(self, layout, field_name, data, **kwargs):
         """

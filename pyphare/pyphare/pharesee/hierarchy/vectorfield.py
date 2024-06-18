@@ -6,7 +6,6 @@ from .hierarchy_utils import (
     _compute_mul,
     _compute_add,
     _compute_sub,
-    _compute_neg,
     _compute_truediv,
     _compute_scalardiv,
 )
