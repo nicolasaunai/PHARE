@@ -1,8 +1,8 @@
 import numpy as np
 
 from pyphare.pharesee.hierarchy import ScalarField, VectorField  # TensorField
-from pyphare.pharesee.hierarchy import compute_hier_from
-from pyphare.pharesee.hierarchy import rename
+from pyphare.pharesee.hierarchy.hierarchy_utils import compute_hier_from
+from pyphare.pharesee.hierarchy.hierarchy_utils import rename
 
 
 def _compute_dot_product(patch_datas, **kwargs):

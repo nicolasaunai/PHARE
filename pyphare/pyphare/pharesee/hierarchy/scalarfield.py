@@ -1,5 +1,5 @@
 from .hierarchy import PatchHierarchy
-from .hierarchy_utils import compute_hier_from, compute_rename, rename
+from .hierarchy_utils import compute_hier_from, compute_rename, rename, _compute_neg
 
 
 class ScalarField(PatchHierarchy):
@@ -30,6 +30,9 @@ class ScalarField(PatchHierarchy):
             raise RuntimeError("right operand not supported")
 
         return ScalarField(h)
+
+    def __radd__(self, other):
+        return self.__add__(other)
 
     def __sub__(self, other):
         assert isinstance(other, (ScalarField, int, float))
@@ -202,3 +205,8 @@ class ScalarField(PatchHierarchy):
             )
 
         return tuple(pd_attrs)
+
+    def __neg__(self):
+        names_self = self.quantities()
+        h = compute_hier_from(_compute_neg, self, new_names=names_self)
+        return ScalarField(h)

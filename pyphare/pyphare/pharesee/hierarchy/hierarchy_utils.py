@@ -123,9 +123,11 @@ def compute_hier_from(compute, hierarchies, **kwargs):
                 ilvl, new_patches_from(compute, hierarchies, ilvl, t, **kwargs)
             )
         patch_levels_per_time.append(patch_levels)
-
     return PatchHierarchy(
-        patch_levels_per_time, domain_box, refinement_ratio, time=reference_hier.times()
+        patch_levels_per_time,
+        domain_box,
+        refinement_ratio,
+        times=reference_hier.times(),
     )
 
 
@@ -431,7 +433,7 @@ def compute_rename(patch_datas, **kwargs):
 
 
 def rename(hierarchy, names):
-    return compute_hier_from(compute_rename, hierarchy, names=names)
+    return compute_hier_from(compute_rename, hierarchy, new_names=names)
 
 
 def _compute_mul(patch_datas, **kwargs):
@@ -495,14 +497,14 @@ def _compute_sub(patch_datas, **kwargs):
 
 
 def _compute_neg(patch_datas, **kwargs):
-    names = kwargs["names"]
+    names = kwargs["new_names"]
     pd_attrs = []
 
     for name in names:
         pd_attrs.append(
             {
                 "name": name,
-                "data": -patch_datas[name].dataset,
+                "data": -patch_datas[name].dataset[:],
                 "centering": patch_datas[name].centerings,
             }
         )

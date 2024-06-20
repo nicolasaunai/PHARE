@@ -5,10 +5,11 @@ import numpy as np
 from pyphare.simulator.simulator import Simulator
 from pyphare.pharesee.run import Run
 from pyphare.pharesee.hierarchy import PatchHierarchy
+from pyphare.pharesee.hierarchy import ScalarField, VectorField
 from pyphare.core.box import Box
 
 diag_outputs = "phare_outputs/"
-time_step_nbr = 6000
+time_step_nbr = 20
 time_step = 0.005
 final_time = time_step * time_step_nbr
 dt = 10 * time_step
@@ -173,10 +174,10 @@ class PatchHierarchyTest(unittest.TestCase):
         r = Run(diag_outputs)
         time = 0.0
         B = r.GetB(time)
-        self.assertEqual(len(B.levels()), self.levelNbrs())
+        self.assertEqual(len(B.levels()), B.levelNbr())
         self.assertEqual(len(B.levels()), 2)
         self.assertEqual(len(B.levels(time)), 2)
-        self.assertEqual(len(B.levels(time)), self.levelNbrs(time))
+        self.assertEqual(len(B.levels(time)), B.levelNbr(time))
 
     def test_can_get_nbytes(self):
         r = Run(diag_outputs)
@@ -194,9 +195,9 @@ class PatchHierarchyTest(unittest.TestCase):
         r = Run(diag_outputs)
         time = 0.0
         B = r.GetB(time)
-        self.assertTrue(isinstance(B.Bx, PatchHierarchy))
-        self.assertTrue(isinstance(B.By, PatchHierarchy))
-        self.assertTrue(isinstance(B.Bz, PatchHierarchy))
+        self.assertTrue(isinstance(B.x, PatchHierarchy))
+        self.assertTrue(isinstance(B.y, PatchHierarchy))
+        self.assertTrue(isinstance(B.z, PatchHierarchy))
 
     def test_partial_domain_hierarchies(self):
         import matplotlib.pyplot as plt
@@ -209,8 +210,8 @@ class PatchHierarchyTest(unittest.TestCase):
         Bpartial = r.GetB(time, selection_box=box)
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
-        B.Bx.plot(plot_patches=True, ax=ax1)
-        Bpartial.Bx.plot(plot_patches=True, ax=ax2)
+        B.x.plot(plot_patches=True, ax=ax1)
+        Bpartial.x.plot(plot_patches=True, ax=ax2)
         ax2.add_patch(
             Rectangle(
                 box.lower,
@@ -221,11 +222,74 @@ class PatchHierarchyTest(unittest.TestCase):
                 lw=3,
             )
         )
-        fig.set_title(f"{self.id()}")
+        ax2.set_title(f"{self.id()}")
         fig.savefig(f"{self.id()}.png")
 
         self.assertTrue(isinstance(Bpartial, PatchHierarchy))
         self.assertTrue(Bpartial.nbrPatches() < B.nbrPatches())
+
+    def test_scalarfield_quantities(self):
+        r = Run(diag_outputs)
+        time = 0.0
+        Ni = r.GetNi(time)
+        Vi = r.GetVi(time)
+        self.assertTrue(isinstance(Ni, ScalarField))
+        self.assertTrue(isinstance(Vi, VectorField))
+
+    def test_sum_two_scalarfields(self):
+        r = Run(diag_outputs)
+        time = 0.0
+        Ni = r.GetNi(time)
+        Pe = r.GetPe(time)
+        s = Ni + Pe
+        self.assertTrue(isinstance(s, ScalarField))
+        self.assertEqual(s.quantities(), ["value"])
+
+    def test_sum_with_scalar(self):
+        r = Run(diag_outputs)
+        time = 0.0
+        Ni = r.GetNi(time)
+        s1 = Ni + 0.1
+        s2 = 0.1 + Ni
+        for s in (s1, s2):
+            self.assertTrue(isinstance(s, ScalarField))
+            self.assertEqual(s.quantities(), ["value"])
+
+    def test_difference(self):
+        r = Run(diag_outputs)
+        time = 0.0
+        Ni = r.GetNi(time)
+        Pe = r.GetPe(time)
+        s1 = Ni - Pe
+        s2 = -Ni
+        s3 = Ni - 0.1
+        for s in (s1, s2, s3):
+            self.assertTrue(isinstance(s, ScalarField))
+            self.assertEqual(s.quantities(), ["value"])
+
+    def test_product(self):
+        r = Run(diag_outputs)
+        time = 0.0
+        Ni = r.GetNi(time)
+        Pe = r.GetPe(time)
+        s1 = Ni * Pe
+        s2 = Ni * 0.1
+        for s in (s1, s2):
+            self.assertTrue(isinstance(s, ScalarField))
+            self.assertEqual(s.quantities(), ["value"])
+
+    def test_division(self):
+        r = Run(diag_outputs)
+        time = 0.0
+        Ni = r.GetNi(time)
+        Pe = r.GetPe(time)
+        s1 = Ni / Pe
+        s2 = Ni / 0.1
+        s3 = Ni / Ni
+        s4 = 0.1 / Ni
+        for s in (s1, s2, s3, s4):
+            self.assertTrue(isinstance(s, ScalarField))
+            self.assertEqual(s.quantities(), ["value"])
 
 
 if __name__ == "__main__":
