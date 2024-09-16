@@ -25,14 +25,14 @@ PHAREDict getDict()
     dict["density"]["initializer"] = static_cast<initfunc>(density);
     
     dict["velocity"]["initializer"]["x_component"] = static_cast<initfunc>(vx);
-    dict["velocity"]["initialiser"]["y_component"] = static_cast<initfunc>(vy);
-    dict["velocity"]["initialiser"]["z_component"] = static_cast<initfunc>(vz);
+    dict["velocity"]["initializer"]["y_component"] = static_cast<initfunc>(vy);
+    dict["velocity"]["initializer"]["z_component"] = static_cast<initfunc>(vz);
     
-    dict["magnetic"]["initialiser"]["x_component"] = static_cast<initfunc>(bx);
-    dict["magnetic"]["initialiser"]["y_component"] = static_cast<initfunc>(by);
-    dict["magnetic"]["initialiser"]["z_component"] = static_cast<initfunc>(bz);
+    dict["magnetic"]["initializer"]["x_component"] = static_cast<initfunc>(bx);
+    dict["magnetic"]["initializer"]["y_component"] = static_cast<initfunc>(by);
+    dict["magnetic"]["initializer"]["z_component"] = static_cast<initfunc>(bz);
     
-    dict["pressure"]["initialiser"] = static_cast<initfunc>(pressure);
+    dict["pressure"]["initializer"] = static_cast<initfunc>(pressure);
     
     return dict;
 }
