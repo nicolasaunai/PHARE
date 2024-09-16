@@ -1,6 +1,7 @@
 #ifndef PHARE_MHD_STATE_HPP
 #define PHARE_MHD_STATE_HPP
 
+#include "core/data/vecfield/vecfield_initializer.hpp"
 #include "initializer/data_provider.hpp"
 
 #include "core/mhd/mhd_quantities.hpp"
@@ -19,31 +20,10 @@ namespace core
     template<typename VecFieldT>
     class MHDState : public IPhysicalState
     {
+        using field_type = typename VecFieldT::field_type;
     public:
-        static constexpr auto dimension = VecFieldT::field_type::dimension; 
+        static constexpr auto dimension = VecFieldT::dimension; 
         
-        MHDState(PHARE::initializer::PHAREDict const& dict)
-            : rho{dict["rho"]}
-            , V{dict["V"]}
-            , B{dict["B"]}
-            , P{dict["P"]}
-            
-            , M{"M", MHDQuantity::Vector::M}
-            , Etot{"Etot", MHDQuantity::Scalar::Etot}
-            
-            , J{"J", MHDQuantity::Vector::J}
-        {
-        }
-        
-        VecFieldT rho;
-        VecFieldT V;
-        VecFieldT B;
-        VecFieldT P;
-        
-        VecFieldT M;
-        VecFieldT Etot;
-        
-        VecFieldT J;
         
         //-------------------------------------------------------------------------
         //                  start the ResourcesUser interface
@@ -74,7 +54,49 @@ namespace core
         //-------------------------------------------------------------------------
         //                  ends the ResourcesUser interface
         //-------------------------------------------------------------------------
-
+        
+        
+        MHDState(PHARE::initializer::PHAREDict const& dict)
+            : rho{"rho", MHDQuantity::Scalar::rho}
+            , V{"V", MHDQuantity::Vector::V}
+            , B{"B", MHDQuantity::Vector::B}
+            , P{"P", MHDQuantity::Scalar::P}
+            
+            , M{"M", MHDQuantity::Vector::M}
+            , Etot{"Etot", MHDQuantity::Scalar::Etot}
+            
+            , J{"J", MHDQuantity::Vector::J}
+            
+            , rhoinit_{dict["density"]["initializer"].template to<initializer::InitFunction<dimension>>()}
+            , Vinit_{dict["velocity"]["initializer"]}
+            , Binit_{dict["magnetic"]["initializer"]}
+            , Pinit_{dict["pressure"]["initializer"].template to<initializer::InitFunction<dimension>>()}
+        {
+        }
+        
+        template<typename GridLayout>
+        void initialize(GridLayout const& layout)
+        {
+            rhoinit_.initialize(rho, layout); // TODO for field
+            Vinit_.initialize(V, layout);
+            Binit_.initialize(B, layout);
+            Pinit_.initialize(P, layout); // TODO for field
+        }
+        
+        field_type rho;
+        VecFieldT V;
+        VecFieldT B;
+        field_type P;
+        
+        VecFieldT M;
+        field_type Etot;
+        
+        VecFieldT J;
+    private:    
+        initializer::InitFunction<dimension> rhoinit_;
+        VecFieldInitializer<dimension> Vinit_;
+        VecFieldInitializer<dimension> Binit_;
+        initializer::InitFunction<dimension> Pinit_;
     };
 } // namespace core
 } // namespace PHARE

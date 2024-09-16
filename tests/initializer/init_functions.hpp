@@ -61,6 +61,10 @@ Return bz(Param x)
     return std::make_shared<core::VectorSpan<double>>(x);
 }
 
+Return pressure(Param x)
+{
+    return std::make_shared<core::VectorSpan<double>>(x);
+}
 
 } // namespace PHARE::initializer::test_fn::func_1d
 
@@ -120,6 +124,10 @@ Return bz(Param x, Param /*y*/)
     return std::make_shared<core::VectorSpan<double>>(x);
 }
 
+Return pressure(Param x, Param /*y*/)
+{
+    return std::make_shared<core::VectorSpan<double>>(x);
+}
 
 } // namespace PHARE::initializer::test_fn::func_2d
 

@@ -75,7 +75,8 @@ void HybridTagger<HybridModel>::tag(PHARE::solver::IPhysicalModel<amr_t>& model,
         auto nCells = core::product(layout.nbrCells());
 
         bool item_exists_and_valid
-            = hybridModel.tags.count(key) and hybridModel.tags[key]->size() == nCells;
+            = hybridModel.
+            tags.count(key) and hybridModel.tags[key]->size() == nCells;
 
         if (!item_exists_and_valid)
         {

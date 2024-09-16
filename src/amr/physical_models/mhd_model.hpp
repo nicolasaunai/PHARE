@@ -16,9 +16,7 @@
 
 
 
-namespace PHARE
-{
-namespace solver
+namespace PHARE::solver
 {
     template<typename GridLayoutT, typename VecFieldT, typename AMR_Types, typename Grid_t>
     class MHDModel : public IPhysicalModel<AMR_Types>
@@ -32,20 +30,15 @@ namespace solver
         static constexpr auto dimension            = GridLayoutT::dimension;
         using resources_manager_type               = amr::ResourcesManager<GridLayoutT, Grid_t>;
 
+        core::MHDState<VecFieldT> state;
+        std::shared_ptr<resources_manager_type> resourcesManager;
 
-        explicit MHDModel(std::shared_ptr<resources_manager_type> const& _resourcesManager)
-            : IPhysicalModel<AMR_Types>{model_name}
-            , resourcesManager{std::move(_resourcesManager)}
-        {
-        }
-
-        virtual void initialize(level_t& /*level*/) override {}
+        virtual void initialize(level_t& level) override;
 
 
         virtual void allocate(patch_t& patch, double const allocateTime) override
         {
-            resourcesManager->allocate(state.B, patch, allocateTime);
-            resourcesManager->allocate(state.V, patch, allocateTime);
+            resourcesManager->allocate(state, patch, allocateTime);
         }
 
 
@@ -59,17 +52,49 @@ namespace solver
         {
             return resourcesManager->setOnPatch(patch, *this);
         }
-
+        
+        explicit MHDModel(PHARE::initializer::PHAREDict const& dict, 
+            std::shared_ptr<resources_manager_type> const& _resourcesManager)
+            : IPhysicalModel<AMR_Types>{model_name}
+            , state{dict}
+            , resourcesManager{std::move(_resourcesManager)}
+        {
+        }
 
         virtual ~MHDModel() override = default;
-
-        core::MHDState<VecFieldT> state;
-        std::shared_ptr<resources_manager_type> resourcesManager;
+        
+        
+        //-------------------------------------------------------------------------
+            //                  start the ResourcesUser interface
+            //-------------------------------------------------------------------------
+        
+            NO_DISCARD bool isUsable() const { return state.isUsable(); }
+        
+            NO_DISCARD bool isSettable() const { return state.isSettable(); }
+        
+            NO_DISCARD auto getCompileTimeResourcesViewList() const { return std::forward_as_tuple(state); }
+        
+            NO_DISCARD auto getCompileTimeResourcesViewList() { return std::forward_as_tuple(state); }
+        
+            //-------------------------------------------------------------------------
+            //                  ends the ResourcesUser interface
+            //-------------------------------------------------------------------------
     };
 
+    template<typename GridLayoutT, typename VecFieldT, typename AMR_Types, typename Grid_t>
+    void MHDModel<GridLayoutT, VecFieldT, AMR_Types, Grid_t>::initialize(
+        level_t& level){
+            for (auto& patch : level)
+                {
+                    auto layout = amr::layoutFromPatch<GridLayoutT>(*patch);
+                    auto _      = this->resourcesManager->setOnPatch(*patch, state);
+            
+                    state.initialize(layout);
+                }
+                resourcesManager->registerForRestarts(*this);
+            
+        }
 
-
-} // namespace solver
-} // namespace PHARE
+} // namespace PHARE::solver
 
 #endif
