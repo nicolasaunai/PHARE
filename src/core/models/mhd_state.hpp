@@ -3,6 +3,7 @@
 
 #include "core/data/vecfield/vecfield_initializer.hpp"
 #include "initializer/data_provider.hpp"
+#include "amr/data/field/initializers/field_user_initializer.hpp"
 
 #include "core/mhd/mhd_quantities.hpp"
 #include "core/models/physical_state.hpp"
@@ -77,10 +78,10 @@ namespace core
         template<typename GridLayout>
         void initialize(GridLayout const& layout)
         {
-            rhoinit_.initialize(rho, layout); // TODO for field
+            FieldUserFunctionInitializer::initialize(rho, layout, rhoinit_);
             Vinit_.initialize(V, layout);
             Binit_.initialize(B, layout);
-            Pinit_.initialize(P, layout); // TODO for field
+            FieldUserFunctionInitializer::initialize(P, layout, Pinit_);
         }
         
         field_type rho;
