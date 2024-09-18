@@ -22,6 +22,4 @@ perf.*
 .vscode
 .phare*
 PHARE_REPORT.zip
-.envrc
-PHAREenv/
-.cache
+

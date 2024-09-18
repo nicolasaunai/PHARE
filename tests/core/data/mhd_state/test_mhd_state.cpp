@@ -13,27 +13,27 @@ using namespace PHARE::core;
 using namespace PHARE::initializer;
 using namespace PHARE::initializer::test_fn::func_1d;
 
-using Field_t          = Field<1, MHDQuantity::Scalar>;
-using VecField1D       = VecField<Field_t, MHDQuantity>;
+using Field_t    = Field<1, MHDQuantity::Scalar>;
+using VecField1D = VecField<Field_t, MHDQuantity>;
 
 
 PHAREDict getDict()
 {
     using initfunc = InitFunction<1>;
     PHAREDict dict;
-    
+
     dict["density"]["initializer"] = static_cast<initfunc>(density);
-    
+
     dict["velocity"]["initializer"]["x_component"] = static_cast<initfunc>(vx);
     dict["velocity"]["initializer"]["y_component"] = static_cast<initfunc>(vy);
     dict["velocity"]["initializer"]["z_component"] = static_cast<initfunc>(vz);
-    
+
     dict["magnetic"]["initializer"]["x_component"] = static_cast<initfunc>(bx);
     dict["magnetic"]["initializer"]["y_component"] = static_cast<initfunc>(by);
     dict["magnetic"]["initializer"]["z_component"] = static_cast<initfunc>(bz);
-    
+
     dict["pressure"]["initializer"] = static_cast<initfunc>(pressure);
-    
+
     return dict;
 }
 
@@ -57,14 +57,14 @@ TEST_F(AnMHDState, fieldsAreSettable)
 
 TEST_F(AnMHDState, hasTupleResourceList)
 {
-    auto resources = state.getCompileTimeResourcesViewList();
-    [[maybe_unused]] auto& rho = std::get<0>(resources);
-    [[maybe_unused]] auto& v = std::get<1>(resources);
-    [[maybe_unused]] auto& b = std::get<2>(resources);
-    [[maybe_unused]] auto& p = std::get<3>(resources);
-    [[maybe_unused]] auto& m = std::get<4>(resources);
+    auto resources              = state.getCompileTimeResourcesViewList();
+    [[maybe_unused]] auto& rho  = std::get<0>(resources);
+    [[maybe_unused]] auto& v    = std::get<1>(resources);
+    [[maybe_unused]] auto& b    = std::get<2>(resources);
+    [[maybe_unused]] auto& p    = std::get<3>(resources);
+    [[maybe_unused]] auto& m    = std::get<4>(resources);
     [[maybe_unused]] auto& etot = std::get<5>(resources);
-    [[maybe_unused]] auto& j = std::get<6>(resources);
+    [[maybe_unused]] auto& j    = std::get<6>(resources);
 
     EXPECT_FALSE(rho.isUsable());
     EXPECT_FALSE(v.isUsable());
