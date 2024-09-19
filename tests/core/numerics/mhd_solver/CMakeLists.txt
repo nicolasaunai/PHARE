@@ -1,8 +1,8 @@
 cmake_minimum_required (VERSION 3.20.1)
 
-project(test-mhdmodel)
+project(test-mhdsolver)
 
-set(SOURCES test_mhd_model.cpp)
+set(SOURCES test_mhd_solver.cpp)
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 

@@ -45,6 +45,25 @@ class MHDState : public IPhysicalState {
     //                  ends the ResourcesUser interface
     //-------------------------------------------------------------------------
 
+    MHDState(std::string name)
+        : rho{"rho", MHDQuantity::Scalar::rho},
+          V{"V", MHDQuantity::Vector::V},
+          B{"B", MHDQuantity::Vector::B},
+          P{"P", MHDQuantity::Scalar::P}
+
+          ,
+          M{"M", MHDQuantity::Vector::M},
+          Etot{"Etot", MHDQuantity::Scalar::Etot}
+
+          ,
+          J{"J", MHDQuantity::Vector::J}
+
+          ,
+          rhoinit_{},
+          Vinit_{},
+          Binit_{},
+          Pinit_{} {}
+
     MHDState(PHARE::initializer::PHAREDict const& dict)
         : rho{"rho", MHDQuantity::Scalar::rho},
           V{"V", MHDQuantity::Vector::V},

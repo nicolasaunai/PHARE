@@ -9,40 +9,40 @@
 
 namespace PHARE::core {
 
-template <typename State, typename GridLayout>
-auto default_mhd_init(State &state, GridLayout const &layout) {
-    auto constexpr static dim = GridLayout::dimension;
-
-    auto setter = [&](auto &v) {
-        auto box = layout.ghostBoxFor(v);
-        for (std::size_t i = 0; i < box.upper[0]; i += 2) {
-            if constexpr (dim == 1) {
-                v(std::array{i}) += .05;
-            } else {
-                for (std::size_t j = 0; j < box.upper[1]; j += 2) {
-                    if constexpr (dim == 2) {
-                        v(i, j) += .05;
-                    } else {
-                        if constexpr (dim == 3) {
-                            for (std::size_t k = 0; k < box.upper[2]; k += 2) {
-                                v(i, j, k) += .05;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    };
-    for (auto &xyz : state.V) setter(xyz);
-    for (auto &xyz : state.B) setter(xyz);
-    setter(state.rho);
-    setter(state.P);
-}
+/*template <typename State, typename GridLayout>*/
+/*auto default_mhd_init(State &state, GridLayout const &layout) {*/
+/*    auto constexpr static dim = GridLayout::dimension;*/
+/**/
+/*    auto setter = [&](auto &v) {*/
+/*        auto box = layout.ghostBoxFor(v);*/
+/*        for (std::size_t i = 0; i < box.upper[0]; i += 2) {*/
+/*            if constexpr (dim == 1) {*/
+/*                v(std::array{i}) += .05;*/
+/*            } else {*/
+/*                for (std::size_t j = 0; j < box.upper[1]; j += 2) {*/
+/*                    if constexpr (dim == 2) {*/
+/*                        v(i, j) += .05;*/
+/*                    } else {*/
+/*                        if constexpr (dim == 3) {*/
+/*                            for (std::size_t k = 0; k < box.upper[2]; k += 2) {*/
+/*                                v(i, j, k) += .05;*/
+/*                            }*/
+/*                        }*/
+/*                    }*/
+/*                }*/
+/*            }*/
+/*        }*/
+/*    };*/
+/*    for (auto &xyz : state.V) setter(xyz);*/
+/*    for (auto &xyz : state.B) setter(xyz);*/
+/*    setter(state.rho);*/
+/*    setter(state.P);*/
+/*}*/
 
 template <std::size_t dim>
 class UsableMHDState : public MHDState<VecFieldMHD<dim>> {
     using Array_t = NdArrayVector<dim, double, /*c_ordering*/ true>;
-    using Grid_t  = Grid<Array_t, HybridQuantity::Scalar>;
+    using Grid_t  = Grid<Array_t, MHDQuantity::Scalar>;
     using Super   = MHDState<VecFieldMHD<dim>>;
 
     void _set() {
@@ -57,12 +57,12 @@ class UsableMHDState : public MHDState<VecFieldMHD<dim>> {
     template <typename GridLayout>
     UsableMHDState(GridLayout const &layout)
         : Super{"MHD"},
-          rho{"MHD_rho", layout, MHDQuantity::Scalar::rho},
-          V{"MHD_V", layout, MHDQuantity::Vector::V},
-          B{"MHD_B", layout, MHDQuantity::Vector::B},
-          P{"MHD_P", layout, MHDQuantity::Scalar::P} {
+          rho{"rho", layout, MHDQuantity::Scalar::rho},
+          V{"V", layout, MHDQuantity::Vector::V},
+          B{"B", layout, MHDQuantity::Vector::B},
+          P{"P", layout, MHDQuantity::Scalar::P} {
         _set();
-        default_mhd_init(super(), layout);
+        /*default_mhd_init(super(), layout);*/
     }
 
     UsableMHDState(UsableMHDState &&that)
