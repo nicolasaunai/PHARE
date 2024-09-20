@@ -85,8 +85,7 @@ class GridLayout {
     static constexpr std::size_t interp_order = GridLayoutImpl::interp_order;
     using This                                = GridLayout<GridLayoutImpl>;
     using implT                               = GridLayoutImpl;
-    using Quantity =
-        std::conditional_t<GridLayoutImpl::QuantityType == "hybrid", HybridQuantity, MHDQuantity>;
+    using Quantity                            = typename GridLayoutImpl::quantity_type;
 
     /**
      * @brief Constructor of a GridLayout
@@ -249,9 +248,9 @@ class GridLayout {
         return physicalStartIndexTable_[icentering][iDir];
     }
 
-    NO_DISCARD std::uint32_t physicalStartIndex(Quantity::Scalar const& hybridQuantity,
+    NO_DISCARD std::uint32_t physicalStartIndex(Quantity::Scalar const& quantity,
                                                 Direction               direction) const {
-        std::uint32_t   iQty          = static_cast<std::uint32_t>(hybridQuantity);
+        std::uint32_t   iQty          = static_cast<std::uint32_t>(quantity);
         std::uint32_t   iDir          = static_cast<std::uint32_t>(direction);
         constexpr auto& _QtyCentering = GridLayoutImpl::_QtyCentering_;
         std::uint32_t   iCentering    = static_cast<std::uint32_t>(_QtyCentering[iQty][iDir]);
@@ -280,9 +279,9 @@ class GridLayout {
         return physicalEndIndexTable_[icentering][iDir];
     }
 
-    NO_DISCARD std::uint32_t physicalEndIndex(Quantity::Scalar const& hybridQuantity,
+    NO_DISCARD std::uint32_t physicalEndIndex(Quantity::Scalar const& quantity,
                                               Direction               direction) const {
-        std::uint32_t   iQty          = static_cast<std::uint32_t>(hybridQuantity);
+        std::uint32_t   iQty          = static_cast<std::uint32_t>(quantity);
         std::uint32_t   iDir          = static_cast<std::uint32_t>(direction);
         constexpr auto& _QtyCentering = GridLayoutImpl::_QtyCentering_;
         std::uint32_t   iCentering    = static_cast<std::uint32_t>(_QtyCentering[iQty][iDir]);
@@ -311,9 +310,8 @@ class GridLayout {
         return 0;
     }
 
-    NO_DISCARD std::uint32_t ghostStartIndex(
-        [[maybe_unused]] Quantity::Scalar const& hybridQuantity,
-        [[maybe_unused]] Direction               direction) const {
+    NO_DISCARD std::uint32_t ghostStartIndex([[maybe_unused]] Quantity::Scalar const& quantity,
+                                             [[maybe_unused]] Direction direction) const {
         // ghostStartIndex is always the first node
         return 0;
     }
@@ -340,9 +338,9 @@ class GridLayout {
         return ghostEndIndexTable_[iCentering][iDir];
     }
 
-    NO_DISCARD std::uint32_t ghostEndIndex(Quantity::Scalar const& hybridQuantity,
+    NO_DISCARD std::uint32_t ghostEndIndex(Quantity::Scalar const& quantity,
                                            Direction               direction) const {
-        std::uint32_t   iQty          = static_cast<std::uint32_t>(hybridQuantity);
+        std::uint32_t   iQty          = static_cast<std::uint32_t>(quantity);
         std::uint32_t   iDir          = static_cast<std::uint32_t>(direction);
         constexpr auto& _QtyCentering = GridLayoutImpl::_QtyCentering_;
         std::uint32_t   iCentering    = static_cast<std::uint32_t>(_QtyCentering[iQty][iDir]);
@@ -714,16 +712,16 @@ class GridLayout {
      * @brief returns the centering of a scalar hybrid quantity in each directions
      */
     NO_DISCARD constexpr static std::array<QtyCentering, dimension> centering(
-        Quantity::Scalar hybridQuantity) {
-        return GridLayoutImpl::centering(hybridQuantity);
+        Quantity::Scalar quantity) {
+        return GridLayoutImpl::centering(quantity);
     }
 
     /**
      * @brief returns the centering of a vector hybrid quantity in each directions
      */
     NO_DISCARD constexpr static std::array<std::array<QtyCentering, dimension>, 3> centering(
-        Quantity::Vector hybridQuantity) {
-        return GridLayoutImpl::centering(hybridQuantity);
+        Quantity::Vector quantity) {
+        return GridLayoutImpl::centering(quantity);
     }
 
     /**
@@ -805,7 +803,7 @@ class GridLayout {
     /**
      * @brief derivedCentering this function returns the
      * centering (primal or dual) of a quantity after a first order derivation. dual becomes
-     * primal and primal becomes dual. hybridQuantityCentering is used to know if the
+     * primal and primal becomes dual. quantityCentering is used to know if the
      * Quantity::Quantity 'qty' is primal or dual in the Direction 'dir'
      */
     NO_DISCARD QtyCentering derivedCentering(Quantity::Scalar qty, Direction dir) const {

@@ -33,7 +33,7 @@ class GridLayoutImplYee {
     static constexpr std::size_t      dimension    = dim;
     static constexpr std::size_t      interp_order = interpOrder;
     static constexpr std::string_view type         = "yee";
-    static constexpr std::string_view QuantityType = "hybrid";
+    using quantity_type                            = HybridQuantity;
     /*
 void constexpr initLinearCombinations_();
 

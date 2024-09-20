@@ -34,7 +34,7 @@ class GridLayoutImplYeeMHD {
     static constexpr std::size_t      dimension    = dim;
     static constexpr std::size_t      interp_order = interpOrder;
     static constexpr std::string_view type         = "yee";
-    static constexpr std::string_view QuantityType = "mhd";
+    using quantity_type                            = MHDQuantity;
     /*
     void constexpr initLinearCombinations_();
 
