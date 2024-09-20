@@ -4,6 +4,7 @@
 #include <core/data/grid/gridlayoutimplyee.hpp>
 #include <core/mhd/mhd_quantities.hpp>
 
+#include "core/data/grid/gridlayoutimplyee_mhd.hpp"
 #include "core/numerics/boundary_condition/boundary_condition.hpp"
 #include "phare_core.hpp"
 #include "tests/core/data/gridlayout/test_gridlayout.hpp"
@@ -12,17 +13,10 @@
 constexpr std::uint32_t cells = 65;
 constexpr std::size_t   dim = 1, interp = 1;
 
-using YeeLayout_t       = PHARE::core::GridLayoutImplYee<dim, interp>;
-using GridLayout_t      = TestGridLayout<YeeLayout_t>;
+using YeeLayout_t       = PHARE::core::GridLayoutImplYeeMHD<dim, interp>;
+using GridLayoutMHD     = PHARE::core::GridLayout<YeeLayout_t>;
+using GridLayout_t      = TestGridLayout<GridLayoutMHD>;
 using BoundaryCondition = PHARE::core::BoundaryCondition<dim, interp>;
-
-/*template <std::size_t dimension_>*/
-/*struct DummyLayout {*/
-/*    static constexpr std::size_t        dimension = dimension_;*/
-/*    std::array<unsigned int, dimension> nbrCells_;*/
-/*    auto                                nbrCells() const { return nbrCells_; }*/
-/*    auto AMRBox() const { return PHARE::core::emptyBox<int, dimension>(); }*/
-/*};*/
 
 TEST(UsableMHDStateTest, ConstructionTest) {
     GridLayout_t                     layout{cells};

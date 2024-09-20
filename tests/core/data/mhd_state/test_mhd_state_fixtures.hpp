@@ -3,41 +3,34 @@
 
 #include "core/mhd/mhd_quantities.hpp"
 #include "core/models/mhd_state.hpp"
+#include "initializer/data_provider.hpp"
 #include "phare_core.hpp"
 #include "tests/core/data/field/test_field_fixtures_mhd.hpp"
 #include "tests/core/data/vecfield/test_vecfield_fixtures_mhd.hpp"
+#include "tests/initializer/init_functions.hpp"
 
 namespace PHARE::core {
+using namespace PHARE::initializer;
+using namespace PHARE::initializer::test_fn::func_1d;
 
-/*template <typename State, typename GridLayout>*/
-/*auto default_mhd_init(State &state, GridLayout const &layout) {*/
-/*    auto constexpr static dim = GridLayout::dimension;*/
-/**/
-/*    auto setter = [&](auto &v) {*/
-/*        auto box = layout.ghostBoxFor(v);*/
-/*        for (std::size_t i = 0; i < box.upper[0]; i += 2) {*/
-/*            if constexpr (dim == 1) {*/
-/*                v(std::array{i}) += .05;*/
-/*            } else {*/
-/*                for (std::size_t j = 0; j < box.upper[1]; j += 2) {*/
-/*                    if constexpr (dim == 2) {*/
-/*                        v(i, j) += .05;*/
-/*                    } else {*/
-/*                        if constexpr (dim == 3) {*/
-/*                            for (std::size_t k = 0; k < box.upper[2]; k += 2) {*/
-/*                                v(i, j, k) += .05;*/
-/*                            }*/
-/*                        }*/
-/*                    }*/
-/*                }*/
-/*            }*/
-/*        }*/
-/*    };*/
-/*    for (auto &xyz : state.V) setter(xyz);*/
-/*    for (auto &xyz : state.B) setter(xyz);*/
-/*    setter(state.rho);*/
-/*    setter(state.P);*/
-/*}*/
+inline PHAREDict getDict() {
+    using initfunc = InitFunction<1>;
+    PHAREDict dict;
+
+    dict["density"]["initializer"] = static_cast<initfunc>(density);
+
+    dict["velocity"]["initializer"]["x_component"] = static_cast<initfunc>(vx);
+    dict["velocity"]["initializer"]["y_component"] = static_cast<initfunc>(vy);
+    dict["velocity"]["initializer"]["z_component"] = static_cast<initfunc>(vz);
+
+    dict["magnetic"]["initializer"]["x_component"] = static_cast<initfunc>(bx);
+    dict["magnetic"]["initializer"]["y_component"] = static_cast<initfunc>(by);
+    dict["magnetic"]["initializer"]["z_component"] = static_cast<initfunc>(bz);
+
+    dict["pressure"]["initializer"] = static_cast<initfunc>(pressure);
+
+    return dict;
+}
 
 template <std::size_t dim>
 class UsableMHDState : public MHDState<VecFieldMHD<dim>> {
@@ -56,13 +49,12 @@ class UsableMHDState : public MHDState<VecFieldMHD<dim>> {
    public:
     template <typename GridLayout>
     UsableMHDState(GridLayout const &layout)
-        : Super{"MHD"},
+        : Super{getDict()},
           rho{"rho", layout, MHDQuantity::Scalar::rho},
           V{"V", layout, MHDQuantity::Vector::V},
           B{"B", layout, MHDQuantity::Vector::B},
           P{"P", layout, MHDQuantity::Scalar::P} {
         _set();
-        /*default_mhd_init(super(), layout);*/
     }
 
     UsableMHDState(UsableMHDState &&that)

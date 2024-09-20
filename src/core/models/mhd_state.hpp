@@ -1,7 +1,7 @@
 #ifndef PHARE_MHD_STATE_HPP
 #define PHARE_MHD_STATE_HPP
 
-#include "amr/data/field/initializers/field_user_initializer.hpp"
+#include "core/data/field/initializers/field_user_initializer.hpp"
 #include "core/data/vecfield/vecfield_initializer.hpp"
 #include "core/def.hpp"
 #include "core/mhd/mhd_quantities.hpp"
