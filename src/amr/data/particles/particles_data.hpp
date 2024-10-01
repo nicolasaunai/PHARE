@@ -305,7 +305,7 @@ namespace amr
         {
             auto const& pOverlap{dynamic_cast<SAMRAI::pdat::CellOverlap const&>(overlap)};
 
-            return countNumberParticlesIn_(pOverlap) * sizeof(Particle_t);
+            return sizeof(std::size_t) + countNumberParticlesIn_(pOverlap) * sizeof(Particle_t);
         }
 
 
