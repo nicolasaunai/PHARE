@@ -137,7 +137,7 @@ public:
     }
 
 
-    auto make_view()
+    auto make_view() // const ?
     {
         return TileSetView<Tile>{box_,          tile_size_,    shape_,        tiles_.data(),
                                  tiles_.size(), cells_.data(), cells_.shape()};
@@ -214,7 +214,9 @@ private:
         {
             for (auto const& cell : tile)
             {
-                cells_(cell) = &tile;
+                // need to substract box lower to get
+                // the local index of that cell in the NdArray
+                cells_(cell - box_.lower) = &tile;
             }
         }
     }

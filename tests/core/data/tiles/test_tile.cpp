@@ -184,11 +184,42 @@ TYPED_TEST(TileTestBoxShapeNotMultipleTileSize, useTileSetView)
     }
 }
 
+struct PatchData
+{
+    using Box2D     = Box<int, 2>;
+    using TileSet2D = TileSet<Box2D>;
+    Box<int, 2> box;
+    TileSet2D tileSet;
+
+    PatchData(Box2D box_,
+              std::array<std::size_t, 2> const& tile_size = ConstArray<std::size_t, 2>(4))
+        : box{box_}
+        , tileSet{box, tile_size}
+    {
+    }
+};
 
 
 TEST(TileSetViewSpan, fromManyPatches)
 {
-    //
+    using Box2D = Box<int, 2>;
+    std::array<Box2D, 3> boxes{Box2D{{0, 10}, {24, 58}}, Box2D{{33, 57}, {65, 83}},
+                               Box2D{{102, 99}, {134, 128}}};
+
+    std::vector<PatchData> patchdatas;
+    std::vector<TileSetView<Box2D>> views;
+
+    for (auto const& box : boxes)
+    {
+        patchdatas.emplace_back(box);
+    }
+
+
+    // now making views
+    for (auto /*const? make_view fails if so...*/& patch : patchdatas)
+    {
+        views.push_back(patch.tileSet.make_view());
+    }
 }
 
 
