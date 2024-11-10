@@ -226,7 +226,7 @@ TEST(TileSetViewSpan, fromManyPatches)
 
 
 
-TYPED_TEST(TileTest, InnerTileHaveCorrectNbrOfNeighbors)
+TYPED_TEST(TileTestBoxShapeMultipleTileSize, InnerTileHaveCorrectNbrOfNeighbors)
 {
     // build the tileSet for a given box
     auto constexpr tile_size = 4u;
@@ -238,7 +238,7 @@ TYPED_TEST(TileTest, InnerTileHaveCorrectNbrOfNeighbors)
     BoxND box{lower, upper};
     TileSet<BoxND> tileSet{box, ConstArray<std::size_t, dim>(tile_size)};
 
-    auto const inner_tiles = tileSet.inner_tiles();
+    auto const inner_tiles = this->tileSet.inner_tiles();
 
     auto constexpr expected_neighbor_nbr = [&]() {
         if constexpr (dim == 1)
@@ -258,13 +258,13 @@ TYPED_TEST(TileTest, InnerTileHaveCorrectNbrOfNeighbors)
         {
             auto tile_ptr = [&]() {
                 if constexpr (dim == 1)
-                    return tileSet.at(cell[0]);
+                    return this->tileSet.at(cell[0]);
                 else if constexpr (dim == 2)
-                    return tileSet.at(cell[0], cell[1]);
+                    return this->tileSet.at(cell[0], cell[1]);
                 else
-                    return tileSet.at(cell[0], cell[1], cell[2]);
+                    return this->tileSet.at(cell[0], cell[1], cell[2]);
             }();
-            if (!isIn(cell, *tile))
+            if (!isIn(cell, static_cast<BoxND>(*tile)))
                 neighbors.insert(tile_ptr);
         }
         EXPECT_EQ(neighbors.size(), expected_neighbor_nbr);

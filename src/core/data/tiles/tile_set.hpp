@@ -77,7 +77,12 @@ public:
     NO_DISCARD auto const& operator[](std::size_t i) const { return tiles_[i]; }
 
     template<typename... Index>
-    NO_DISCARD auto& at(Index... indexes)
+    NO_DISCARD auto at(Index... indexes)
+    {
+        return cells_(indexes...);
+    }
+    template<typename... Index>
+    NO_DISCARD auto at(Index... indexes) const
     {
         return cells_(indexes...);
     }
@@ -120,27 +125,14 @@ public:
     }
 
 
-    NO_DISCARD auto overlaped_with(Box<int, dimension> const& box) const
-    {
-        std::vector<std::pair<bool, Tile const*>> overlaped;
-        for (auto const& tile : tiles_)
-        {
-            auto overlap = box * tile;
-            if (overlap)
-            {
-                auto complete_overlap = (*overlap).size() == tile.size();
-                overlaped.emplace_back(complete_overlap, &tile);
-            }
-        }
-        return overlaped;
-    }
+
     template<bool strict = false>
     NO_DISCARD auto overlaped_with(Box<int, dimension> const& box)
     {
         if constexpr (strict)
-            return strict_overlap_(box);
+            return strict_overlap_<Tile*>(box);
         else
-            return lose_overlap_(box);
+            return lose_overlap_<Tile*>(box);
     }
 
     template<bool strict = false>
@@ -148,15 +140,23 @@ public:
     {
         {
             if constexpr (strict)
-                return strict_overlap_(box);
+                return strict_overlap_<Tile const*>(box);
             else
-                return lose_overlap_(box);
+                return lose_overlap_<Tile const*>(box);
         }
     }
 
     NO_DISCARD auto inner_tiles() const
     {
         std::vector<Tile const*> border;
+        Box<typename Tile::type, dimension> inner_box{box_};
+
+        inner_box.shrink(tile_size_);
+        return overlaped_with<true>(inner_box);
+    }
+    NO_DISCARD auto inner_tiles()
+    {
+        std::vector<Tile*> border;
         Box<typename Tile::type, dimension> inner_box{box_};
 
         inner_box.shrink(tile_size_);
@@ -189,9 +189,10 @@ public:
     }
 
 private:
+    template<typename TilePtr>
     NO_DISCARD auto lose_overlap_(Box<int, dimension> const& box)
     {
-        std::vector<std::pair<bool, Tile*>> overlaped;
+        std::vector<std::pair<bool, TilePtr>> overlaped;
         for (auto& tile : tiles_)
         {
             auto overlap = box * tile;
@@ -203,9 +204,11 @@ private:
         }
         return overlaped;
     }
+
+    template<typename TilePtr>
     NO_DISCARD auto strict_overlap_(Box<int, dimension> const& box)
     {
-        std::vector<Tile*> overlaped;
+        std::vector<TilePtr> overlaped;
         for (auto& tile : tiles_)
         {
             auto overlap = box * tile;
@@ -220,36 +223,6 @@ private:
         return overlaped;
     }
 
-    NO_DISCARD auto lose_overlap_(Box<int, dimension> const& box) const
-    {
-        std::vector<std::pair<bool, Tile const*>> overlaped;
-        for (auto& tile : tiles_)
-        {
-            auto overlap = box * tile;
-            if (overlap)
-            {
-                auto complete_overlap = (*overlap).size() == tile.size();
-                overlaped.emplace_back(complete_overlap, &tile);
-            }
-        }
-        return overlaped;
-    }
-    NO_DISCARD auto strict_overlap_(Box<int, dimension> const& box) const
-    {
-        std::vector<Tile const*> overlaped;
-        for (auto& tile : tiles_)
-        {
-            auto overlap = box * tile;
-            if (overlap)
-            {
-                if (auto complete_overlap = (*overlap).size() == tile.size(); complete_overlap)
-                {
-                    overlaped.push_back(&tile);
-                }
-            }
-        }
-        return overlaped;
-    }
 
     void consistent_tile_size_() const
     {
