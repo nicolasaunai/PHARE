@@ -26,12 +26,14 @@ template<typename Type, std::size_t dim>
 struct Box
 {
     static const size_t dimension = dim;
+    using type                    = Type;
 
 
     Point<Type, dim> lower;
     Point<Type, dim> upper;
 
-    Box() = default;
+    Box()                = default;
+    Box(Box const& from) = default;
 
     constexpr Box(std::array<Type, dim> const& _lower, std::array<Type, dim> const& _upper)
         : lower{_lower}
@@ -72,18 +74,56 @@ struct Box
 
     NO_DISCARD bool isEmpty() const { return (*this) == Box{}; }
 
-    void grow(Type const& size)
+    template<typename Size>
+    auto& grow(Size const& by)
     {
-        assert(size >= 0);
+        assert(by >= 0);
         for (auto& c : lower)
         {
-            c -= size;
+            c -= by;
         }
         for (auto& c : upper)
         {
-            c += size;
+            c += by;
         }
+        return *this;
     }
+
+    template<typename Size>
+    auto& shrink(Size const& by)
+    {
+        assert(by >= 0);
+        for (auto& c : lower)
+            c += by;
+        for (auto& c : upper)
+            c -= by;
+        return *this;
+    }
+
+
+
+    template<typename Size>
+    auto& grow(std::array<Size, dim> const& by)
+    {
+        for (auto iDim = 0u; iDim < dim; ++iDim)
+        {
+            lower[iDim] -= by[iDim];
+            upper[iDim] += by[iDim];
+        }
+        return *this;
+    }
+
+    template<typename Size>
+    auto& shrink(std::array<Size, dim> const& by)
+    {
+        for (auto iDim = 0u; iDim < dim; ++iDim)
+        {
+            lower[iDim] += by[iDim];
+            upper[iDim] -= by[iDim];
+        }
+        return *this;
+    }
+
 
     NO_DISCARD auto shape() const { return upper - lower + 1; }
     NO_DISCARD auto size() const { return core::product(shape()); }
