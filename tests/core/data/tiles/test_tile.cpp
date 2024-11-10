@@ -251,6 +251,9 @@ TYPED_TEST(TileTestBoxShapeMultipleTileSize, InnerTileHaveCorrectNbrOfNeighbors)
 
     for (auto const& tile : inner_tiles)
     {
+        // looping over all cells of the tileSet box +1 ghost cell
+        // we should see 9 different pointers, that is (2,8,26) neighbors + the tile itself
+        // we discard the tile itself
         std::unordered_set<BoxND*> neighbors;
         BoxND ghost_box{*tile};
         ghost_box.grow(1);
@@ -275,6 +278,7 @@ TYPED_TEST(TileTestBoxShapeMultipleTileSize, InnerTileHaveCorrectNbrOfNeighbors)
 TYPED_TEST(TileTestBoxShapeNotMultipleTileSize, gettingBorderTiles)
 {
     // auto perimeter_tiles = this->tileSet.perimeter_tiles();
+    auto border_tiles = this->tileSet.border_tiles();
 }
 
 

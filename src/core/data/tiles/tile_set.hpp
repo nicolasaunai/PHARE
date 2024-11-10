@@ -130,9 +130,9 @@ public:
     NO_DISCARD auto overlaped_with(Box<int, dimension> const& box)
     {
         if constexpr (strict)
-            return strict_overlap_<Tile*>(box);
+            return strict_overlap_(box);
         else
-            return lose_overlap_<Tile*>(box);
+            return lose_overlap_(box);
     }
 
     template<bool strict = false>
@@ -140,9 +140,9 @@ public:
     {
         {
             if constexpr (strict)
-                return strict_overlap_<Tile const*>(box);
+                return strict_overlap_(box);
             else
-                return lose_overlap_<Tile const*>(box);
+                return lose_overlap_(box);
         }
     }
 
@@ -150,17 +150,65 @@ public:
     {
         std::vector<Tile const*> border;
         Box<typename Tile::type, dimension> inner_box{box_};
-
         inner_box.shrink(tile_size_);
         return overlaped_with<true>(inner_box);
     }
+
     NO_DISCARD auto inner_tiles()
     {
         std::vector<Tile*> border;
         Box<typename Tile::type, dimension> inner_box{box_};
-
         inner_box.shrink(tile_size_);
         return overlaped_with<true>(inner_box);
+    }
+
+    // would be faster to have a way to directly select incomplete overlaps
+    // rather than taking all and filtering incompletes
+    NO_DISCARD auto border_tiles() const
+    {
+        for (auto const ts : tile_size_)
+            assert(ts > 1);
+
+        std::vector<Tile const*> border;
+        Box<typename Tile::type, dimension> inner_box{box_};
+        // this box intersects the first tile around the perimeter
+        // but completely contains the inner tiles
+        // we want all incomplete overlaps
+        auto tile_size_minus_one = tile_size_;
+        for (auto& ts : tile_size_minus_one)
+            --ts;
+        inner_box.shrink(tile_size_minus_one);
+
+        auto overlaped = overlaped_with(inner_box);
+        for (auto const& [complete, tile] : overlaped)
+        {
+            if (!complete)
+                border.push_back(tile);
+        }
+        return border;
+    }
+    NO_DISCARD auto border_tiles()
+    {
+        for (auto const ts : tile_size_)
+            assert(ts > 1);
+
+        std::vector<Tile const*> border;
+        Box<typename Tile::type, dimension> inner_box{box_};
+        // this box intersects the first tile around the perimeter
+        // but completely contains the inner tiles
+        // we want all incomplete overlaps
+        auto tile_size_minus_one = tile_size_;
+        for (auto& ts : tile_size_minus_one)
+            --ts;
+        inner_box.shrink(tile_size_minus_one);
+
+        auto overlaped = overlaped_with(inner_box);
+        for (auto const& [complete, tile] : overlaped)
+        {
+            if (!complete)
+                border.push_back(tile);
+        }
+        return border;
     }
 
     NO_DISCARD auto shape() const { return shape_; }
@@ -190,10 +238,10 @@ public:
 
 private:
     template<typename TilePtr>
-    NO_DISCARD auto lose_overlap_(Box<int, dimension> const& box)
+    static auto _lose_overlap(Box<int, dimension> const& box, std::vector<Tile>& tiles)
     {
         std::vector<std::pair<bool, TilePtr>> overlaped;
-        for (auto& tile : tiles_)
+        for (auto& tile : tiles)
         {
             auto overlap = box * tile;
             if (overlap)
@@ -204,12 +252,11 @@ private:
         }
         return overlaped;
     }
-
     template<typename TilePtr>
-    NO_DISCARD auto strict_overlap_(Box<int, dimension> const& box)
+    NO_DISCARD static auto _strict_overlap(Box<int, dimension> const& box, std::vector<Tile>& tiles)
     {
         std::vector<TilePtr> overlaped;
-        for (auto& tile : tiles_)
+        for (auto& tile : tiles)
         {
             auto overlap = box * tile;
             if (overlap)
@@ -223,6 +270,25 @@ private:
         return overlaped;
     }
 
+    NO_DISCARD auto lose_overlap_(Box<int, dimension> const& box)
+    {
+        return _lose_overlap<Tile*>(box, tiles_);
+    }
+
+    NO_DISCARD auto lose_overlap_(Box<int, dimension> const& box) const
+    {
+        return _lose_overlap<Tile const*>(box, tiles_);
+    }
+
+    NO_DISCARD auto strict_overlap_(Box<int, dimension> const& box)
+    {
+        return _strict_overlap<Tile*>(box, tiles_);
+    }
+
+    NO_DISCARD auto strict_overlap_(Box<int, dimension> const& box) const
+    {
+        return _strict_overlap<Tile const*>(box, tiles_);
+    }
 
     void consistent_tile_size_() const
     {
