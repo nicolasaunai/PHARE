@@ -34,12 +34,12 @@ public:
         {
             if (complete)
             {
-                selected.push_back(tile.domainParticles_);
+                selected.push_back(tile->domainParticles_);
             }
             else
             {
                 auto intersection = tile * from;
-                tile.domainParticles.export_to(*intersection, selected);
+                tile->domainParticles.export_to(*intersection, selected);
             }
         }
         return selected;

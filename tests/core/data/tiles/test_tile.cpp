@@ -9,6 +9,7 @@
 #include "gtest/gtest.h"
 
 #include <memory>
+#include <unordered_set>
 
 
 using namespace PHARE::core;
@@ -131,7 +132,7 @@ TYPED_TEST(TileTestBoxShapeNotMultipleTileSize, retrieveTilesFromBoxOverlap)
     Box<int, dim> selection_box{ConstArray<int, dim>(11), ConstArray<int, dim>(34)};
 
     auto expected_nbr = std::pow(7, this->dimension);
-    auto overlapeds   = this->tileSet.export_overlaped_with(selection_box);
+    auto overlapeds   = this->tileSet.overlaped_with(selection_box);
     EXPECT_EQ(overlapeds.size(), expected_nbr);
 
     auto completes   = 0.;
@@ -219,6 +220,60 @@ TEST(TileSetViewSpan, fromManyPatches)
     for (auto /*const? make_view fails if so...*/& patch : patchdatas)
     {
         views.push_back(patch.tileSet.make_view());
+    }
+}
+
+
+
+
+TYPED_TEST(TileTest, InnerTileHaveCorrectNbrOfNeighbors)
+{
+    // build the tileSet for a given box
+    auto constexpr tile_size = 4u;
+    auto constexpr dim       = TypeParam::dimension;
+    using BoxND              = Box<int, dim>;
+
+    auto const lower = ConstArray<int, dim>(0);
+    auto const upper = ConstArray<int, dim>(51);
+    BoxND box{lower, upper};
+    TileSet<BoxND> tileSet{box, ConstArray<std::size_t, dim>(tile_size)};
+
+    // get the tiles that overlap the inner box
+    auto inner_box{box};
+    inner_box.grow(-tile_size);
+    auto inner_tiles = tileSet.overlaped_with(inner_box);
+
+    auto constexpr expected_neighbor_nbr = [&]() {
+        if constexpr (dim == 1)
+            return 2;
+        else if constexpr (dim == 2)
+            return 8;
+        else if constexpr (dim == 3)
+            return 26;
+    }();
+
+    for (auto const& [complete_overlap, tile] : inner_tiles)
+    {
+        if (complete_overlap)
+        {
+            std::unordered_set<BoxND*> neighbors;
+            BoxND ghost_box{*tile};
+            ghost_box.grow(1);
+            for (auto const& cell : ghost_box)
+            {
+                auto tile_ptr = [&]() {
+                    if constexpr (dim == 1)
+                        return tileSet.at(cell[0]);
+                    else if constexpr (dim == 2)
+                        return tileSet.at(cell[0], cell[1]);
+                    else
+                        return tileSet.at(cell[0], cell[1], cell[2]);
+                }();
+                if (!isIn(cell, *tile))
+                    neighbors.insert(tile_ptr);
+            }
+            EXPECT_EQ(neighbors.size(), expected_neighbor_nbr);
+        }
     }
 }
 

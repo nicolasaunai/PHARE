@@ -33,20 +33,37 @@ public:
         , cells_{cells, nbr_cells}
     {
     }
-    NO_DISCARD auto export_overlaped_with(Box<int, dimension> const& box) const
+    NO_DISCARD auto overlaped_with(Box<int, dimension> const& box) const
     {
-        std::vector<std::pair<bool, Tile>> overlaped;
+        std::vector<std::pair<bool, Tile const*>> overlaped;
         for (auto const& tile : tiles_)
         {
-            auto overlap = box * Box<int, dimension>{tile.lower, tile.upper};
+            auto overlap = box * tile;
             if (overlap)
             {
                 auto complete_overlap = (*overlap).size() == tile.size();
-                overlaped.emplace_back(complete_overlap, tile);
+                overlaped.emplace_back(complete_overlap, &tile);
             }
         }
         return overlaped;
     }
+
+    NO_DISCARD auto overlaped_with(Box<int, dimension> const& box)
+    {
+        std::vector<std::pair<bool, Tile*>> overlaped;
+        for (auto& tile : tiles_)
+        {
+            auto overlap = box * tile;
+            if (overlap)
+            {
+                auto complete_overlap = (*overlap).size() == tile.size();
+                overlaped.emplace_back(complete_overlap, &tile);
+            }
+        }
+        return overlaped;
+    }
+
+
     NO_DISCARD auto shape() const { return shape_; }
     NO_DISCARD auto size() const { return tiles_.size(); }
 
@@ -103,16 +120,30 @@ public:
     }
 
 
-    NO_DISCARD auto export_overlaped_with(Box<int, dimension> const& box) const
+    NO_DISCARD auto overlaped_with(Box<int, dimension> const& box) const
     {
-        std::vector<std::pair<bool, Tile>> overlaped;
+        std::vector<std::pair<bool, Tile const*>> overlaped;
         for (auto const& tile : tiles_)
         {
-            auto overlap = box * Box<int, dimension>{tile.lower, tile.upper};
+            auto overlap = box * tile;
             if (overlap)
             {
                 auto complete_overlap = (*overlap).size() == tile.size();
-                overlaped.emplace_back(complete_overlap, tile);
+                overlaped.emplace_back(complete_overlap, &tile);
+            }
+        }
+        return overlaped;
+    }
+    NO_DISCARD auto overlaped_with(Box<int, dimension> const& box)
+    {
+        std::vector<std::pair<bool, Tile*>> overlaped;
+        for (auto& tile : tiles_)
+        {
+            auto overlap = box * tile;
+            if (overlap)
+            {
+                auto complete_overlap = (*overlap).size() == tile.size();
+                overlaped.emplace_back(complete_overlap, &tile);
             }
         }
         return overlaped;
