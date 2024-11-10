@@ -187,6 +187,7 @@ public:
         }
         return border;
     }
+
     NO_DISCARD auto border_tiles()
     {
         for (auto const ts : tile_size_)

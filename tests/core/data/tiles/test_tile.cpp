@@ -1,11 +1,7 @@
-#include <ctype.h>
-#include <string>
-
 #include "core/utilities/box/box.hpp"
 #include "core/utilities/types.hpp"
 #include "core/data/tiles/tile_set.hpp"
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 #include <memory>
@@ -89,19 +85,10 @@ TYPED_TEST(TileTestBoxShapeMultipleTileSize, cluserSetSizeIsCorrect)
 }
 
 
-TYPED_TEST(TileTestBoxShapeNotMultipleTileSize, totalTileSetSurfaceIsEqualToBoxSurface)
+TYPED_TEST(TileTestBoxShapeNotMultipleTileSize, sumOfTileSurfacesEqualsTileSetBoxSurface)
 {
-    auto surface = 0.;
-    for (auto i = 0u; i < this->tileSet.size(); ++i)
-    {
-        auto current_surface = 1.;
-        for (auto d = 0u; d < this->dimension; ++d)
-        {
-            auto l = (this->tileSet[i].upper[d] - this->tileSet[i].lower[d] + 1);
-            current_surface *= l;
-        }
-        surface += current_surface;
-    }
+    auto surface = std::accumulate(std::begin(this->tileSet), std::end(this->tileSet), 0u,
+                                   [&](auto acc, auto const& tile) { return acc + tile.size(); });
     EXPECT_EQ(surface, this->box.size());
 }
 
@@ -116,9 +103,7 @@ TYPED_TEST(TileTestBoxShapeNotMultipleTileSize, tileHasNoOverlapWithOthers)
         {
             if (&tile != &other)
             {
-                auto const box1 = Box<int, dim>{tile.lower, tile.upper};
-                auto const box2 = Box<int, dim>{other.lower, other.upper};
-                auto overlap    = box1 * box2;
+                auto overlap = tile * other;
                 EXPECT_FALSE(overlap.has_value());
             }
         }
@@ -185,42 +170,69 @@ TYPED_TEST(TileTestBoxShapeNotMultipleTileSize, useTileSetView)
     }
 }
 
-struct PatchData
-{
-    using Box2D     = Box<int, 2>;
-    using TileSet2D = TileSet<Box2D>;
-    Box<int, 2> box;
-    TileSet2D tileSet;
 
-    PatchData(Box2D box_,
-              std::array<std::size_t, 2> const& tile_size = ConstArray<std::size_t, 2>(4))
+template<std::size_t dim>
+struct PatchDataMock
+{
+    using BoxND     = Box<int, dim>;
+    using TileSetND = TileSet<BoxND>;
+    Box<int, dim> box;
+    TileSetND tileSet;
+
+    PatchDataMock(BoxND box_,
+                  std::array<std::size_t, dim> const& tile_size = ConstArray<std::size_t, dim>(4))
         : box{box_}
         , tileSet{box, tile_size}
     {
     }
 };
 
+template<std::size_t dim>
+struct RankDataMock
+{
+    RankDataMock()
+    {
+        if constexpr (dim == 1)
+        {
+            patchdatas.emplace_back(Box<int, dim>{{0}, {24}});
+            patchdatas.emplace_back(Box<int, dim>{{33}, {65}});
+            patchdatas.emplace_back(Box<int, dim>{{102}, {134}});
+        }
+        else if constexpr (dim == 2)
+        {
+            patchdatas.emplace_back(Box<int, dim>{{0, 10}, {24, 58}});
+            patchdatas.emplace_back(Box<int, dim>{{33, 57}, {65, 83}});
+            patchdatas.emplace_back(Box<int, dim>{{102, 99}, {134, 128}});
+        }
+        else if constexpr (dim == 3)
+        {
+            patchdatas.emplace_back(Box<int, dim>{{0, 10, 20}, {24, 58, 78}});
+            patchdatas.emplace_back(Box<int, dim>{{33, 57, 77}, {65, 83, 98}});
+            patchdatas.emplace_back(Box<int, dim>{{102, 99, 120}, {134, 128, 138}});
+        }
+    }
+    std::vector<PatchDataMock<dim>> patchdatas;
+};
+
 
 TEST(TileSetViewSpan, fromManyPatches)
 {
-    using Box2D = Box<int, 2>;
-    std::array<Box2D, 3> boxes{Box2D{{0, 10}, {24, 58}}, Box2D{{33, 57}, {65, 83}},
-                               Box2D{{102, 99}, {134, 128}}};
-
-    std::vector<PatchData> patchdatas;
-    std::vector<TileSetView<Box2D>> views;
-
-    for (auto const& box : boxes)
-    {
-        patchdatas.emplace_back(box);
-    }
-
+    RankDataMock<2> rankData;
+    std::vector<TileSetView<Box<int, 2>>> views;
 
     // now making views
-    for (auto /*const? make_view fails if so...*/& patch : patchdatas)
+    for (auto /*const? make_view fails if so...*/& patch : rankData.patchdatas)
     {
         views.push_back(patch.tileSet.make_view());
     }
+}
+
+
+TEST(rankData, canCreateRankData)
+{
+    RankDataMock<1> rankData;
+    RankDataMock<2> rankData2;
+    RankDataMock<3> rankData3;
 }
 
 
@@ -275,11 +287,14 @@ TYPED_TEST(TileTestBoxShapeMultipleTileSize, InnerTileHaveCorrectNbrOfNeighbors)
 }
 
 
-TYPED_TEST(TileTestBoxShapeNotMultipleTileSize, gettingBorderTiles)
+TYPED_TEST(TileTestBoxShapeMultipleTileSize, gettingBorderTiles)
 {
-    // auto perimeter_tiles = this->tileSet.perimeter_tiles();
     auto border_tiles = this->tileSet.border_tiles();
+    auto inner_tiles  = this->tileSet.inner_tiles();
+    auto total_tiles  = this->tileSet.size();
+    EXPECT_EQ(border_tiles.size(), total_tiles - inner_tiles.size());
 }
+
 
 
 

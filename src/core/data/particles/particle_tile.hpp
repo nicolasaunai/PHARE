@@ -29,7 +29,7 @@ public:
     {
         ParticleArray selected;
 
-        auto overlaped_tiles = export_overlaped_with(from);
+        auto overlaped_tiles = overlaped_with(from);
         for (auto const& [complete, tile] : overlaped_tiles)
         {
             if (complete)
