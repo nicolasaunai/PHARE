@@ -8,6 +8,7 @@
 #include "core/utilities/algorithm.hpp"
 #include "core/hybrid/hybrid_quantities.hpp"
 #include "core/def.hpp"
+#include "core/data/electrons/electrons.hpp"
 
 
 #include <cstddef>
@@ -36,7 +37,7 @@ namespace core
             : electromag{dict["electromag"]}
             , ions{dict["ions"]}
             , J{"J", HybridQuantity::Vector::J}
-            , electrons{dict["electrons"], ions, J}
+            , electrons{dict["electrons"], StandardHybridElectronFluxComputer<Ions>(ions, J)}
         {
         }
 

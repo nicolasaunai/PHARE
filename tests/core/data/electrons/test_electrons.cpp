@@ -159,7 +159,8 @@ struct ElectronsTest : public ::testing::Test
     PartPackND pack{"particles", &domainParticles, &patchGhostParticles, &levelGhostParticles};
 
     IonsT ions;
-    Electrons<IonsT> electrons;
+    StandardHybridElectronFluxComputerT fluxCompute;
+    Electrons<StandardHybridElectronFluxComputerT> electrons;
 
     template<typename... Args>
     auto static _ions(Args&... args)
@@ -199,16 +200,18 @@ struct ElectronsTest : public ::testing::Test
                     layout.allocSize(HybridQuantity::Scalar::rho)}
         , Pe{"Pe", HybridQuantity::Scalar::P, layout.allocSize(HybridQuantity::Scalar::P)}
         , ions{_ions(F, Nibuffer, NiProtons, Vi, M, protons_M, pack)}
-        , electrons{createDict<dim>()["electrons"], ions, J}
+        , fluxCompute{ions, J}
+        , electrons{createDict<dim>()["electrons"], fluxCompute}
     {
+        /* TODO explain why... we have 2 flux computer : 1 is the flux computer and the same is a copy in the pressure closure */
         auto&& emm = std::get<0>(electrons.getCompileTimeResourcesViewList());
         auto&& fc  = std::get<0>(emm.getCompileTimeResourcesViewList());
-
+        auto&& pc  = std::get<1>(emm.getCompileTimeResourcesViewList());
+        auto&& f_zob = std::get<0>(pc.getCompileTimeResourcesViewList());
 
         Ve.set_on(std::get<0>(fc.getCompileTimeResourcesViewList()));
+        Ve.set_on(std::get<0>(f_zob.getCompileTimeResourcesViewList()));
 
-
-        auto&& pc          = std::get<1>(emm.getCompileTimeResourcesViewList());
         auto const& [_, P] = pc.getCompileTimeResourcesViewList();
         P.setBuffer(&Pe);
 

@@ -36,12 +36,7 @@ public:
     //                  start the ResourcesUser interface
     //-------------------------------------------------------------------------
 
-    NO_DISCARD bool isUsable() const {
-       // auto io = ions_.isUsable();
-       // auto j = J_.isUsable();
-       // auto ve = Ve_.isUsable();
-       // ;
-        return ions_.isUsable() && J_.isUsable() && Ve_.isUsable(); }
+    NO_DISCARD bool isUsable() const { return ions_.isUsable() && J_.isUsable() && Ve_.isUsable(); }
 
     NO_DISCARD bool isSettable() const
     {
@@ -141,17 +136,20 @@ private:
 };
 
 
-
-template<typename FluxComputer>
+/// TODO a template aussi du VecField B
+/// template<typename FluxComputer>
+template<typename Ions>
 class ElectronPressureClosure
 {
-    using GridLayout = typename FluxComputer::GridLayout;
-    using Field      = typename FluxComputer::Field;
+    using GridLayout = typename Ions::gridlayout_type;
+    using Field      = typename Ions::field_type;
 
 public:
 
-    ElectronPressureClosure(PHARE::initializer::PHAREDict const& dict, FluxComputer const& flux)
-        : flux_{flux}
+    ///ElectronPressureClosure(PHARE::initializer::PHAREDict const& dict, FluxComputer const& flux)
+    ElectronPressureClosure(PHARE::initializer::PHAREDict const& dict, Ions const& ions)
+///        : flux_{flux}
+        : ions_{ions}
         , Pe_{"Pe", HybridQuantity::Scalar::P}
     {
     }
@@ -161,10 +159,7 @@ public:
     //-------------------------------------------------------------------------
 
     NO_DISCARD bool isUsable() const {
-        // auto pe = Pe_.isUsable();
-        // auto fl = flux_.isUsable();
-        // ;
-        return Pe_.isUsable() and flux_.isUsable(); }
+        return Pe_.isUsable() and ions_.isUsable(); }
 
     NO_DISCARD bool isSettable() const { return Pe_.isSettable(); }
 
@@ -178,10 +173,10 @@ public:
 
     NO_DISCARD auto getCompileTimeResourcesViewList() const
     {
-        return std::forward_as_tuple(flux_, Pe_);
+        return std::forward_as_tuple(ions_, Pe_);
     }
 
-    NO_DISCARD auto getCompileTimeResourcesViewList() { return std::forward_as_tuple(flux_, Pe_); }
+    NO_DISCARD auto getCompileTimeResourcesViewList() { return std::forward_as_tuple(ions_, Pe_); }
 
     //-------------------------------------------------------------------------
     //                  ends the ResourcesUser interface
@@ -205,20 +200,21 @@ public:
     void virtual computePressure(GridLayout const& /*layout*/) = 0;
 
 protected:
-    FluxComputer flux_;
+    Ions ions_;  // TODO doit avoir un FluxComputer et pas des ions...
     Field Pe_;
 };
 
 
 
-template<typename FluxComputer>
-class IsothermalElectronPressureClosure : public ElectronPressureClosure<FluxComputer>
+// TODO a template aussi du VecField B
+template<typename Ions>  // TODO template de FluxCompute
+class IsothermalElectronPressureClosure : public ElectronPressureClosure<Ions>
 {
-    using GridLayout = typename FluxComputer::GridLayout;
-//  using VecField   = typename FluxComputer::VecField;
-    using Field      = typename FluxComputer::Field;
+    using GridLayout = typename Ions::gridlayout_type;
+    using VecField   = typename Ions::vecfield_type;
+    using Field      = typename Ions::field_type;
 
-    using Super = ElectronPressureClosure<FluxComputer>;
+    using Super = ElectronPressureClosure<Ions>;
     using Super::getCompileTimeResourcesViewList;
     using Super::isSettable;
     using Super::isUsable;
@@ -226,9 +222,9 @@ class IsothermalElectronPressureClosure : public ElectronPressureClosure<FluxCom
 public:
     using field_type = Field;
 
-    IsothermalElectronPressureClosure(PHARE::initializer::PHAREDict const& dict, FluxComputer const& flux)
-        : Super{dict, flux},
-          Te_{dict["pressure_closure"]["Te"].template to<double>()}
+    IsothermalElectronPressureClosure(PHARE::initializer::PHAREDict const& dict, Ions const& ions)
+        : Super{dict, ions},
+        Te_{dict["pressure_closure"]["Te"].template to<double>()}
     {
     }
 
@@ -239,7 +235,7 @@ public:
         if (!this->Pe_.isUsable())
             throw std::runtime_error("Error - !!! isothermal closure pressure not usable");
 
-        auto const& Ne_ = this->flux_.density();
+        auto const& Ne_ = this->ions_.density();  // TODO this should be the density() method of the StandardHybridElectronFluxComputer
         std::transform(std::begin(Ne_), std::end(Ne_), std::begin(this->Pe_),
                        [this](auto n) { return n * Te_; });
     }
@@ -250,56 +246,16 @@ private:
 
 
 
-template<typename FluxComputer>
-class PolytropicElectronPressureClosure : public ElectronPressureClosure<FluxComputer>
-{
-    using GridLayout = typename FluxComputer::GridLayout;
-//  using VecField   = typename FluxComputer::VecField;
-    using Field      = typename FluxComputer::Field;
-
-    using Super = ElectronPressureClosure<FluxComputer>;
-    using Super::getCompileTimeResourcesViewList;
-    using Super::isSettable;
-    using Super::isUsable;
-
-public:
-    using field_type = Field;
-
-    PolytropicElectronPressureClosure(PHARE::initializer::PHAREDict const& dict, FluxComputer const& flux)
-        : Super{dict, flux},
-          Te_{dict["pressure_closure"]["Te"].template to<double>()}
-    {
-    }
-
-    void computePressure(GridLayout const& /*layout*/) override
-    {
-        static_assert(Field::is_contiguous, "Error - assumes Field date is contiguous");
-
-        if (!this->Pe_.isUsable())
-            throw std::runtime_error("Error - !!! isothermal closure pressure not usable");
-
-        auto const& Ne_ = this->flux_.density();
-        std::transform(std::begin(Ne_), std::end(Ne_), std::begin(this->Pe_),
-                       [this](auto n) { return n * Te_; });
-    }
-
-private:
-    double const Te_ = 0;
-};
-
-
-
-template<typename FluxComputer>
-std::unique_ptr<ElectronPressureClosure<FluxComputer>> ElectronPressureClosureFactory(PHARE::initializer::PHAREDict const& dict, FluxComputer& flux)
+template<typename Ions>
+std::shared_ptr<ElectronPressureClosure<Ions>> ElectronPressureClosureFactory(PHARE::initializer::PHAREDict const& dict, Ions& ions)
 {
 
     if (dict["pressure_closure"]["name"].template to<std::string>() == "isothermal")
     {
-    return std::make_unique<IsothermalElectronPressureClosure<FluxComputer>>(dict, flux);
+    return std::make_shared<IsothermalElectronPressureClosure<Ions>>(dict, ions);
     }
-    else if (dict["pressure_closure"]["name"].template to<std::string>() == "polytropic")
+    else if (dict["pressure_closure"]["name"].template to<std::string>() == "adiabatical")
     {
-    return std::make_unique<PolytropicElectronPressureClosure<FluxComputer>>(dict, flux);
     }
     return nullptr;
 
@@ -307,28 +263,23 @@ std::unique_ptr<ElectronPressureClosure<FluxComputer>> ElectronPressureClosureFa
 
 
 
-template<typename FluxComputer>
+template<typename Ions>
 class ElectronMomentModel
 {
-    using GridLayout = typename FluxComputer::GridLayout;
-    using VecField   = typename FluxComputer::VecField;
-    using Field      = typename FluxComputer::Field;
+    using VecField     = typename Ions::vecfield_type;
+    using Field        = typename Ions::field_type;
+    using GridLayout   = typename Ions::gridlayout_type;
+    using FluxComputer = StandardHybridElectronFluxComputer<Ions>;
 
 public:
-    ElectronMomentModel(PHARE::initializer::PHAREDict const& dict, FluxComputer& flux)
-        : dict_{dict}
-        , fluxComput_{flux}
-        , pressureClosure_{ElectronPressureClosureFactory<FluxComputer>(dict, flux)}
+    ElectronMomentModel(PHARE::initializer::PHAREDict const& dict, Ions& ions, VecField& J)
+        : fluxComput_{ions, J}
+//      , pressureClosure_{dict["pressure_closure"], fluxComput_.getIons()}
+//      , pressureClosure_{dict, ions}
+        , pressureClosure_{ElectronPressureClosureFactory<Ions>(dict, ions)}  // TODO ne doit pas se construire avec les ions mais avec le fluxComput_
     {
     }
 
-    ElectronMomentModel(ElectronMomentModel const& self)
-        : dict_{self.dict_}
-        , fluxComput_{self.fluxComput_}
-        , pressureClosure_{ElectronPressureClosureFactory<FluxComputer>(dict_, fluxComput_)}
-    {
-    *pressureClosure_ = *self.pressureClosure_;
-    }
    // ElectronMomentModel(ElectronMomentModel const&) = default;
    // ElectronMomentModel& operator=(ElectronMomentModel const&) = default;
   // ~ElectronMomentModel() = default;
@@ -339,9 +290,7 @@ public:
 
     NO_DISCARD bool isUsable() const
     {
-        // auto fc = fluxComput_.isUsable();
-        // auto pc = pressureClosure_->isUsable();
-        // ;
+//      return fluxComput_.isUsable() and pressureClosure_.isUsable();
         return fluxComput_.isUsable() and pressureClosure_->isUsable();
     }
 
@@ -350,11 +299,13 @@ public:
     NO_DISCARD auto getCompileTimeResourcesViewList() const
     {
         return std::forward_as_tuple(fluxComput_, *pressureClosure_);
+//      return std::forward_as_tuple(fluxComput_, pressureClosure_);
     }
 
     NO_DISCARD auto getCompileTimeResourcesViewList()
     {
         return std::forward_as_tuple(fluxComput_, *pressureClosure_);
+//      return std::forward_as_tuple(fluxComput_, pressureClosure_);
     }
 
     //-------------------------------------------------------------------------
@@ -364,60 +315,62 @@ public:
 
     NO_DISCARD Field const& density() const { return fluxComput_.density(); }
     NO_DISCARD VecField const& velocity() const { return fluxComput_.velocity(); }
+//  NO_DISCARD Field const& pressure() const { return pressureClosure_.pressure(); }
     NO_DISCARD Field const& pressure() const { return pressureClosure_->pressure(); }
 
     NO_DISCARD Field& density() { return fluxComput_.density(); }
     NO_DISCARD VecField& velocity() { return fluxComput_.velocity(); }
+//  NO_DISCARD Field& pressure() { return pressureClosure_.pressure(); }
     NO_DISCARD Field& pressure() { return pressureClosure_->pressure(); }
 
     void computeDensity() { fluxComput_.computeDensity(); }
     void computeBulkVelocity(GridLayout const& layout) { fluxComput_.computeBulkVelocity(layout); }
+//  void computePressure(GridLayout const& layout) { pressureClosure_.computePressure(layout); }
     void computePressure(GridLayout const& layout) { pressureClosure_->computePressure(layout); }
 
-    /*auto static deep_copy(ElectronMomentModel & self, initializer::PHAREDict const& dict)  {*/
-    /*  assert(self.isUsable());*/
-    /*  // auto const& [Ve, ions, J] = self.fluxComput_.getCompileTimeResourcesViewList( );*/
-    /*  ElectronMomentModel<FluxComputer> cpy {dict, self.fluxComput_}; // new shared ptr memory*/
-    /*  std::get<0>(cpy.getCompileTimeResourcesViewList()) = self.fluxComput_;*/
-    /*  std::get<1>(cpy.getCompileTimeResourcesViewList()) = *self.pressureClosure_;*/
-    /*  assert(cpy.isUsable());*/
-    /*  return cpy;*/
-    /*}*/
+    auto static deep_copy(ElectronMomentModel & self, initializer::PHAREDict const& dict)  {
+      assert(self.isUsable());
+      auto const& [Ve, ions, J] = self.fluxComput_.getCompileTimeResourcesViewList( );
+      ElectronMomentModel<Ions> cpy {dict, ions, J}; // new shared ptr memory
+      std::get<0>(cpy.getCompileTimeResourcesViewList()) = self.fluxComput_;
+      std::get<1>(cpy.getCompileTimeResourcesViewList()) = *self.pressureClosure_;
+      assert(cpy.isUsable());
+      return cpy;
+    }
 
 private:
-    initializer::PHAREDict dict_;
     FluxComputer fluxComput_;
-    std::unique_ptr<ElectronPressureClosure<FluxComputer>> pressureClosure_;
+    std::shared_ptr<ElectronPressureClosure<Ions>> pressureClosure_;
+    // IsothermalElectronPressureClosure<Ions> pressureClosure_;
 };
 
 
 
-template<typename FluxComputer>
-class Electrons : public LayoutHolder<typename FluxComputer::GridLayout>
+template<typename Ions>
+class Electrons : public LayoutHolder<typename Ions::gridlayout_type>
 {
-    using GridLayout = typename FluxComputer::GridLayout;
-    using VecField   = typename FluxComputer::VecField;
-    using Field      = typename FluxComputer::Field;
+    using VecField   = typename Ions::vecfield_type;
+    using Field      = typename Ions::field_type;
+    using GridLayout = typename Ions::gridlayout_type;
 
-    /*auto static copy_or_init_model(Electrons & that){*/
-    /**/
-    /*  if(that.isUsable()) return ElectronMomentModel<FluxComputer>::deep_copy(that.momentModel_, that.dict_);*/
-    /*  // else*/
-    /*  auto const& [fluxComput, pressureClosure] = that.momentModel_.getCompileTimeResourcesViewList();*/
-    /*  return ElectronMomentModel<FluxComputer>{that.dict_, fluxComput};*/
-    /*}*/
+    auto static copy_or_init_model(Electrons & that){
+
+      if(that.isUsable()) return ElectronMomentModel<Ions>::deep_copy(that.momentModel_, that.dict_);
+      // else
+      auto const& [fluxComput, pressureClosure] = that.momentModel_.getCompileTimeResourcesViewList();
+      auto const& [Ve, ions, J] = fluxComput.getCompileTimeResourcesViewList( );
+      return ElectronMomentModel<Ions>{that.dict_, ions, J};
+    }
 
 public:
-    Electrons(initializer::PHAREDict const& dict, FluxComputer flux)
-        : dict_{dict}
-        , momentModel_{dict, flux}
+    Electrons(initializer::PHAREDict const& dict, Ions& ions, VecField& J)
+        : dict_{dict},
+          momentModel_{dict, ions, J}
     {
     }
 
-    // Electrons(Electrons const& that) : dict_{that.dict_}, momentModel_{copy_or_init_model(const_cast<Electrons&>(that))}{}
-
-    Electrons(Electrons const& that) = default;
-
+    Electrons(Electrons const& that) : dict_{that.dict_}, momentModel_{copy_or_init_model(const_cast<Electrons&>(that))}{
+    }
 
     void update(GridLayout const& layout)
     {
@@ -436,8 +389,6 @@ public:
     //-------------------------------------------------------------------------
 
     NO_DISCARD bool isUsable() const {
-        // auto mm = momentModel_.isUsable();
-        // ;
       return momentModel_.isUsable(); }
 
     NO_DISCARD bool isSettable() const { return momentModel_.isSettable(); }
@@ -467,7 +418,7 @@ public:
 
 private:
     initializer::PHAREDict dict_;
-    ElectronMomentModel<FluxComputer> momentModel_;
+    ElectronMomentModel<Ions> momentModel_;
 };
 
 } // namespace PHARE::core

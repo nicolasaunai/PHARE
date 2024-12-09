@@ -39,6 +39,9 @@ namespace core
         Ions(Ions const&) = default;
         Ions(Ions&&)      = default;
 
+        Ions& operator=(Ions const&) = default;
+        Ions& operator=(Ions&&)      = default;
+
 
         explicit Ions(PHARE::initializer::PHAREDict const& dict)
             : rho_{densityName(), HybridQuantity::Scalar::rho}

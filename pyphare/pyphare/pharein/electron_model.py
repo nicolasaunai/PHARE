@@ -19,10 +19,37 @@ class IsothermalClosure(object):
         return IsothermalClosure.closure_name
 
 
+
+class PolytropicClosure(object):
+    closure_name = "polytropic"
+
+    def __init__(self, **kwargs):
+        self.Te = kwargs.get("Te", PolytropicClosure._defaultTe())
+        self.Gamma = kwargs.get("Gamma", PolytropicClosure._defaultGamma())
+
+    @staticmethod
+    def _defaultTe():
+        return 0.1
+
+    @staticmethod
+    def _defaultGamma():
+        return 1.66
+
+    def dict_path(self):
+        return {"name/": PolytropicClosure.closure_name, "Te": self.Te, "Gamma": self.Gamma}
+
+    @staticmethod
+    def name():
+        return PolytropicClosure.closure_name
+
+
+
 class ElectronModel(object):
     def __init__(self, **kwargs):
         if kwargs["closure"] == "isothermal":
             self.closure = IsothermalClosure(**kwargs)
+        elif kwargs["closure"] == "polytropic":
+            self.closure = PolytropicClosure(**kwargs)
         else:
             self.closure = None
 

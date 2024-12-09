@@ -64,7 +64,7 @@ public:
     TensorField()                                     = delete;
     TensorField(TensorField const& source)            = default;
     TensorField(TensorField&& source)                 = default;
-    TensorField& operator=(TensorField const& source) = delete;
+    TensorField& operator=(TensorField const& source) = default;
     TensorField& operator=(TensorField&& source)      = default;
 
     TensorField(std::string const& name, tensor_t physQty)
@@ -223,11 +223,11 @@ private:
 
 
 
-    std::string const name_{"No Name"};
+    std::string name_{"No Name"};
     std::array<typename PhysicalQuantity::Scalar, N> physQties_;
-    std::array<std::string, N> const componentNames_;
+    std::array<std::string, N> componentNames_;
     std::array<field_type, N> components_;
-    std::unordered_map<std::string, std::size_t> const nameToIndex_;
+    std::unordered_map<std::string, std::size_t> nameToIndex_;
 };
 
 
