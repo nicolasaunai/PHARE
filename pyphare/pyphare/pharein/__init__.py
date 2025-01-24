@@ -407,6 +407,16 @@ def populateDict():
     if simulation.electrons is None:
         raise RuntimeError("Error - no electrons registered to this Simulation")
     else:
+        print(type(simulation.electrons.dict_path()))
+        print(simulation.electrons.dict_path())
+        for item in simulation.electrons.dict_path():
+            if (item[0] == 'electrons/pressure_closure/name/'):
+                name_ = item[1]
+        if name_ == 'isothermal':
+            pass
+        if name_ == 'polytropic':
+            pass
+
         for item in simulation.electrons.dict_path():
             if isinstance(item[1], str):
                 add_string("simulation/" + item[0], item[1])

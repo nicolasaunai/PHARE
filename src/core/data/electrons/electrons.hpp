@@ -267,7 +267,7 @@ public:
 
     PolytropicElectronPressureClosure(PHARE::initializer::PHAREDict const& dict, FluxComputer const& flux)
         : Super{dict, flux},
-          Te_{dict["pressure_closure"]["Te"].template to<double>()}
+          Te_{dict["pressure_closure"]["Te_"].template to<double>()}
     {
     }
 

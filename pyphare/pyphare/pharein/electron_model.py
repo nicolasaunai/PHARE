@@ -24,11 +24,22 @@ class PolytropicClosure(object):
     closure_name = "polytropic"
 
     def __init__(self, **kwargs):
-        self.Te = kwargs.get("Te", PolytropicClosure._defaultTe())
+        self.dim = global_vars.sim.ndim
+        self.Te_ = kwargs.get("Te_", PolytropicClosure._defaultTe_())
+        self.Te = kwargs.get("Te", self._defaultTe())
         self.Gamma = kwargs.get("Gamma", PolytropicClosure._defaultGamma())
 
     @staticmethod
-    def _defaultTe():
+    def _defaultTe_():
+        return 0.1
+
+    def _defaultTe(self):
+        if self.dim == 1:
+            return lambda x: 0.1
+        if self.dim == 2:
+            return lambda x, y: 0.1
+        if self.dim == 3:
+            return lambda x, y, z: 0.1
         return 0.1
 
     @staticmethod
@@ -36,7 +47,10 @@ class PolytropicClosure(object):
         return 1.66
 
     def dict_path(self):
-        return {"name/": PolytropicClosure.closure_name, "Te": self.Te, "Gamma": self.Gamma}
+        return {"name/": PolytropicClosure.closure_name,
+                "Te_": self.Te_,
+                # "Te": self.Te,
+                "Gamma": self.Gamma}
 
     @staticmethod
     def name():
