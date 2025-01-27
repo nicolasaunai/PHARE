@@ -49,7 +49,7 @@ class PolytropicClosure(object):
     def dict_path(self):
         return {"name/": PolytropicClosure.closure_name,
                 "Te_": self.Te_,
-                # "Te": self.Te,
+                "Te": self.Te,
                 "Gamma": self.Gamma}
 
     @staticmethod

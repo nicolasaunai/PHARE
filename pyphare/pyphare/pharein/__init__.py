@@ -20,6 +20,8 @@ from .simulation import (
     deserialize as deserialize_sim,
 )
 from .load_balancer import LoadBalancer
+from typing import Callable
+
 
 __all__ = [
     "UniformModel",
@@ -420,5 +422,10 @@ def populateDict():
         for item in simulation.electrons.dict_path():
             if isinstance(item[1], str):
                 add_string("simulation/" + item[0], item[1])
-            else:
+            elif isinstance(item[1], float):
                 add_double("simulation/" + item[0], item[1])
+            elif isinstance(item[1], Callable):
+                print(type(item[1]))
+                addInitFunction("simulation/" + item[0] + "_fn", fn_wrapper(item[1]))
+            else:
+                raise ValueError(f"acceptable entries should be int, float or collable")
