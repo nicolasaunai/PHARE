@@ -12,6 +12,8 @@
 #include "initializer/data_provider.hpp"
 #include <memory>
 
+#include "core/data/field/initializers/field_user_initializer.hpp"
+
 
 namespace PHARE::core
 {
@@ -215,7 +217,7 @@ template<typename FluxComputer>
 class IsothermalElectronPressureClosure : public ElectronPressureClosure<FluxComputer>
 {
     using GridLayout = typename FluxComputer::GridLayout;
-//  using VecField   = typename FluxComputer::VecField;
+    using VecField   = typename FluxComputer::VecField;
     using Field      = typename FluxComputer::Field;
 
     using Super = ElectronPressureClosure<FluxComputer>;
@@ -254,7 +256,7 @@ template<typename FluxComputer>
 class PolytropicElectronPressureClosure : public ElectronPressureClosure<FluxComputer>
 {
     using GridLayout = typename FluxComputer::GridLayout;
-//  using VecField   = typename FluxComputer::VecField;
+    using VecField   = typename FluxComputer::VecField;
     using Field      = typename FluxComputer::Field;
 
     using Super = ElectronPressureClosure<FluxComputer>;
@@ -262,14 +264,30 @@ class PolytropicElectronPressureClosure : public ElectronPressureClosure<FluxCom
     using Super::isSettable;
     using Super::isUsable;
 
+    static constexpr std::size_t dim = VecField::dimension;
+
+
 public:
     using field_type = Field;
 
     PolytropicElectronPressureClosure(PHARE::initializer::PHAREDict const& dict, FluxComputer const& flux)
         : Super{dict, flux},
-          Te_{dict["pressure_closure"]["Te_"].template to<double>()}
+          Te_{dict["pressure_closure"]["Te_"].template to<double>()},
+          Te{},
+          TeInit_{dict["pressure_closure"]["Te"].template to<initializer::InitFunction<dim>>()}
     {
     }
+
+
+
+
+    template<typename GridLayout>
+    void initialize(GridLayout const& layout)
+    {
+        FieldUserFunctionInitializer::initialize(TeInit_, layout, Te);
+    }
+
+
 
     void computePressure(GridLayout const& /*layout*/) override
     {
@@ -285,6 +303,8 @@ public:
 
 private:
     double const Te_ = 0;
+    Field Te;
+    initializer::InitFunction<dim> TeInit_;
 };
 
 
