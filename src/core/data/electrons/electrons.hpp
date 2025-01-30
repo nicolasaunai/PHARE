@@ -273,7 +273,6 @@ public:
     PolytropicElectronPressureClosure(PHARE::initializer::PHAREDict const& dict, FluxComputer const& flux)
         : Super{dict, flux},
           Te_{dict["pressure_closure"]["Te_"].template to<double>()},
-          Te{},
           TeInit_{dict["pressure_closure"]["Te"].template to<initializer::InitFunction<dim>>()}
     {
     }
@@ -284,7 +283,7 @@ public:
     template<typename GridLayout>
     void initialize(GridLayout const& layout)
     {
-        FieldUserFunctionInitializer::initialize(TeInit_, layout, Te);
+//       FieldUserFunctionInitializer::initialize(TeInit_, layout, Te);
     }
 
 
@@ -303,7 +302,6 @@ public:
 
 private:
     double const Te_ = 0;
-    Field Te;
     initializer::InitFunction<dim> TeInit_;
 };
 
