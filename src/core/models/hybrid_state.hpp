@@ -62,7 +62,7 @@ namespace core
 
         NO_DISCARD bool isUsable() const
         {
-            return electromag.isUsable() and ions.isUsable() && J.isUsable();
+            return electromag.isUsable() and ions.isUsable() && J.isUsable(); // TODO dont we also need the electrons to be usable ???
         }
 
 

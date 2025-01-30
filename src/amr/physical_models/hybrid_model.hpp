@@ -136,6 +136,7 @@ void HybridModel<GridLayoutT, Electromag, Ions, Electrons, AMR_Types, Grid_t>::i
             particleInitializer->loadParticles(pop.domainParticles(), layout);
         }
 
+        state.electrons.initialize(layout);
         state.electromag.initialize(layout);
     }
 
