@@ -19,7 +19,6 @@ class IsothermalClosure(object):
         return IsothermalClosure.closure_name
 
 
-
 class PolytropicClosure(object):
     closure_name = "polytropic"
 
@@ -42,14 +41,15 @@ class PolytropicClosure(object):
         return 1.66
 
     def dict_path(self):
-        return {"name/": PolytropicClosure.closure_name,
-                "Pe": self.Pe,
-                "Gamma": self.Gamma}
+        return {
+            "name/": PolytropicClosure.closure_name,
+            "Pe": self.Pe,
+            "Gamma": self.Gamma,
+        }
 
     @staticmethod
     def name():
         return PolytropicClosure.closure_name
-
 
 
 class ElectronModel(object):

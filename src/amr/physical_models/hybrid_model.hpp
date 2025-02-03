@@ -127,7 +127,8 @@ void HybridModel<GridLayoutT, Electromag, Ions, Electrons, AMR_Types, Grid_t>::i
         // first initialize the ions
         auto layout = amr::layoutFromPatch<gridlayout_type>(*patch);
         auto& ions  = state.ions;
-        auto _      = this->resourcesManager->setOnPatch(*patch, state.electromag, state.ions);
+        auto _      = this->resourcesManager->setOnPatch(*patch, state.electromag, state.ions,
+                                                         state.electrons);
 
         for (auto& pop : ions)
         {
