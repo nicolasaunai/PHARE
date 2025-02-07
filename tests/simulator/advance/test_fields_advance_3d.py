@@ -76,6 +76,7 @@ class AdvanceTest(AdvanceTestBase):
         )
         self._test_overlaped_fields_are_equal(datahier, time_step_nbr, time_step)
 
+    # TODO3D implement coarsening tests
     # @data(
     #    *per_interp(({"L0": {"B0": Box3D(10, 14)}})),
     #    *per_interp(({"L0": {"B0": Box3D(10, 14), "B1": Box3D(15, 19)}})),

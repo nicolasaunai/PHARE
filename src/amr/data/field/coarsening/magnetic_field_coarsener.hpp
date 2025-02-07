@@ -30,6 +30,10 @@ using core::dirZ;
  * This is done by assigning to a magnetic field component on a coarse face, the average
  * of the enclosed fine faces
  *
+ * WARNING:
+ * the following assumes where B is, i.e. Yee layout centering
+ * as it only does faces pirmal-dual, dual-primal and dual-dual
+ *
  */
 template<std::size_t dim>
 class MagneticFieldCoarsener
@@ -84,6 +88,7 @@ private:
     typename std::enable_if<D == 2, void>::type
     coarsen(Point_t const fineStartIndex, FieldT const& fineField, FieldT& coarseField,
             Point_t const coarseIndex);
+
     template<std::size_t D, typename FieldT>
     typename std::enable_if<D == 3, void>::type
     coarsen(Point_t const fineStartIndex, FieldT const& fineField, FieldT& coarseField,
@@ -102,6 +107,11 @@ typename std::enable_if<D == 1, void>::type
 MagneticFieldCoarsener<dim>::coarsen(Point_t const fineStartIndex, FieldT const& fineField,
                                      FieldT& coarseField, Point_t const coarseIndex)
 {
+    // in 1D div(B) is automatically satisfied so using this coarsening
+    // opertor is probably not better than the default one, but we do that
+    // for some constistency
+    // coarse flux is equal to fine flux and we're 1D so tehre is flux partitionned
+    // only for By and Bz, Bx is equal to the fine value
     if (centering_[dirX] == core::QtyCentering::primal) // bx
     {
         coarseField(coarseIndex[dirX]) = fineField(fineStartIndex[dirX]);
@@ -119,6 +129,25 @@ typename std::enable_if<D == 2, void>::type
 MagneticFieldCoarsener<dim>::coarsen(Point_t const fineStartIndex, FieldT const& fineField,
                                      FieldT& coarseField, Point_t const coarseIndex)
 {
+    //
+    //  > == fine bx
+    //  >>> = coarse bx
+    //
+    //   o______________o______________o
+    //   |              |              |
+    //   |              |              |
+    //   >              >              >     0.5
+    //   |              |              |     |
+    //   |              |              |     |
+    //  >>>_____________o_____________>>>  <--
+    //   |              |              |     |
+    //   |              |              |     |
+    //   >              >              >     0.5
+    //   |              |              |
+    //   |              |              |
+    //   o______________o______________o
+    //
+    // Bx is (primal,dual)
     if (centering_[dirX] == core::QtyCentering::primal
         and centering_[dirY] == core::QtyCentering::dual)
     {
@@ -127,6 +156,27 @@ MagneticFieldCoarsener<dim>::coarsen(Point_t const fineStartIndex, FieldT const&
               * (fineField(fineStartIndex[dirX], fineStartIndex[dirY])
                  + fineField(fineStartIndex[dirX], fineStartIndex[dirY] + 1));
     }
+    //
+    //  > == fine by
+    //  >>> = coarse by
+    //
+    //   o______________o______________o
+    //   |              |              |
+    //   |              |              |
+    //   |              |              |     0.5
+    //   |              |              |     |
+    //   |              |              |     |
+    //   o______________o_____________ o   <--
+    //   |              |              |     |
+    //   |              |              |     |
+    //   |              |              |     0.5
+    //   |              |              |
+    //   |              ^              |
+    //   o_______^______^_______^_______o
+    //                  ^
+    //          0.5             0.5
+    //
+    // By is (dual,primal)
     else if (centering_[dirX] == core::QtyCentering::dual
              and centering_[dirY] == core::QtyCentering::primal)
     {
@@ -135,6 +185,27 @@ MagneticFieldCoarsener<dim>::coarsen(Point_t const fineStartIndex, FieldT const&
               * (fineField(fineStartIndex[dirX], fineStartIndex[dirY])
                  + fineField(fineStartIndex[dirX] + 1, fineStartIndex[dirY]));
     }
+    //
+    //  fbz == fine bz
+    //  CBZ = coarse bz
+    //
+    //   o______________o______________o
+    //   |              |              |
+    //   |              |              |
+    //   |    fbz       |      fbz     |     0.5
+    //   |              |              |     |
+    //   |              |              |     |
+    //   o_____________CBZ____________ o   <--
+    //   |              |              |     |
+    //   |              |              |     |
+    //   |     fbz      |     fbz      |     0.5
+    //   |              |              |
+    //   |              |              |
+    //   o_______^______o_______^_______o
+    //
+    //          0.5             0.5
+    //
+    // By is (dual,dual)
     else if (centering_[dirX] == core::QtyCentering::dual
              and centering_[dirY] == core::QtyCentering::dual)
     {
