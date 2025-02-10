@@ -212,6 +212,57 @@ def coarsen(qty, coarseField, fineField, coarseBox, fineData, coarseData):
                         coarseData[coarseLocalIndexX][coarseLocalIndexY] = (
                             left * 0.5 + right * 0.5
                         )
+    if ndim == 3:
+        for indexX in coarse_indices(0):
+            fineIndexX = fineLocal(indexX, 0)
+            coarseLocalIndexX = coarseLocal(indexX, 0)
+
+            for indexY in coarse_indices(1):
+                fineIndexY = fineLocal(indexY, 1)
+                coarseLocalIndexY = coarseLocal(indexY, 1)
+
+                for indexZ in coarse_indices(2):
+                    fineIndexZ = fineLocal(indexZ, 2)
+                    coarseLocalIndexZ = coarseLocal(indexZ, 2)
+
+                    if is_primal[0] and not is_primal[1] and not is_primal[2]:
+                        if qty == "Bx":
+                            coarseData[
+                                coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                            ] = 0.25 * (
+                                fineData[fineIndexX, fineIndexY, fineIndexZ]
+                                + fineData[fineIndexX, fineIndexY + 1, fineIndexZ]
+                                + fineData[fineIndexX, fineIndexY, fineIndexZ + 1]
+                                + fineData[fineIndexX, fineIndexY + 1, fineIndexZ + 1]
+                            )
+                        else:
+                            raise ValueError("PDD coarsening not implemented")
+
+                    if not is_primal[0] and is_primal[1] and not is_primal[2]:
+                        if qty == "By":
+                            coarseData[
+                                coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                            ] = 0.25 * (
+                                fineData[fineIndexX, fineIndexY, fineIndexZ]
+                                + fineData[fineIndexX + 1, fineIndexY, fineIndexZ]
+                                + fineData[fineIndexX, fineIndexY, fineIndexZ + 1]
+                                + fineData[fineIndexX + 1, fineIndexY, fineIndexZ + 1]
+                            )
+                        else:
+                            raise ValueError("DPD coarsening not implemented")
+
+                    if not is_primal[0] and not is_primal[1] and is_primal[2]:
+                        if qty == "Bz":
+                            coarseData[
+                                coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                            ] = 0.25 * (
+                                fineData[fineIndexX, fineIndexY, fineIndexZ]
+                                + fineData[fineIndexX + 1, fineIndexY, fineIndexZ]
+                                + fineData[fineIndexX, fineIndexY + 1, fineIndexZ]
+                                + fineData[fineIndexX + 1, fineIndexY + 1, fineIndexZ]
+                            )
+                        else:
+                            raise ValueError("PDP coarsening not implemented")
 
 
 if __name__ == "__main__":

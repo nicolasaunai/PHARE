@@ -310,7 +310,7 @@ MagneticFieldCoarsener<dim>::coarsen(Point_t const fineStartIndex, FieldT const&
     //   |     fbz      |     fbz      |     0.25
     //   |              |              |
     //   |              |              |
-    //   o______________o_______________o   ----> x
+    //   o______________o______________o   ----> x
     //
     //        0.25             0.25
     // Bz is (dual,dual,primal) so average in x and y directions
