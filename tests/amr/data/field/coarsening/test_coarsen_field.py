@@ -225,6 +225,34 @@ def coarsen(qty, coarseField, fineField, coarseBox, fineData, coarseData):
                     fineIndexZ = fineLocal(indexZ, 2)
                     coarseLocalIndexZ = coarseLocal(indexZ, 2)
 
+                    # all primal is for moments
+                    if all(is_primal):
+                        value = 0.0
+                        ishift = (-1, 0, 1)
+                        iweights = (0.25, 0.5, 0.25)
+                        jshift = (-1, 0, 1)
+                        jweights = (0.25, 0.5, 0.25)
+                        kshift = (-1, 0, 1)
+                        kweights = (0.25, 0.5, 0.25)
+                        for i in ishift:
+                            yvalue = 0.0
+                            for j in jshift:
+                                zvalue = 0.0
+                                for k in kshift:
+                                    zvalue += (
+                                        fineData[
+                                            fineIndexX + i,
+                                            fineIndexY + j,
+                                            fineIndexZ + k,
+                                        ]
+                                        * kweights[k]
+                                    )
+                                yvalue += zvalue * jweights[j]
+                            value += yvalue * iweights[i]
+                        coarseData[
+                            coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                        ] = value
+
                     if is_primal[0] and not is_primal[1] and not is_primal[2]:
                         if qty == "Bx":
                             coarseData[
@@ -235,8 +263,37 @@ def coarsen(qty, coarseField, fineField, coarseBox, fineData, coarseData):
                                 + fineData[fineIndexX, fineIndexY, fineIndexZ + 1]
                                 + fineData[fineIndexX, fineIndexY + 1, fineIndexZ + 1]
                             )
-                        else:
-                            raise ValueError("PDD coarsening not implemented")
+
+                        else:  # Ey is also PDP
+                            value = 0.0
+                            ishift = (-1, 0, 1)
+                            iweights = (0.25, 0.5, 0.25)
+
+                            # dual in Y means taking the two dual fine nodes
+                            # around the coarse one we want the value for.
+                            jshift = (0, 1)
+                            jweights = (0.5, 0.5)
+
+                            kshift = (-1, 0, 1)
+                            kweights = (0.25, 0.5, 0.25)
+                            for i in ishift:
+                                yvalue = 0.0
+                                for j in jshift:
+                                    zvalue = 0.0
+                                    for k in kshift:
+                                        zvalue += (
+                                            fineData[
+                                                fineIndexX + i,
+                                                fineIndexY + j,
+                                                fineIndexZ + k,
+                                            ]
+                                            * kweights[k]
+                                        )
+                                    yvalue += zvalue * jweights[j]
+                                value += yvalue * iweights[i]
+                            coarseData[
+                                coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                            ] = value
 
                     if not is_primal[0] and is_primal[1] and not is_primal[2]:
                         if qty == "By":
@@ -248,8 +305,36 @@ def coarsen(qty, coarseField, fineField, coarseBox, fineData, coarseData):
                                 + fineData[fineIndexX, fineIndexY, fineIndexZ + 1]
                                 + fineData[fineIndexX + 1, fineIndexY, fineIndexZ + 1]
                             )
-                        else:
-                            raise ValueError("DPD coarsening not implemented")
+                        else:  # Ez is PPD
+                            value = 0.0
+                            ishift = (-1, 0, 1)
+                            iweights = (0.25, 0.5, 0.25)
+
+                            jshift = (-1, 0, 1)
+                            jweights = (0.25, 0.5, 0.25)
+
+                            # dual in Z means taking the two dual fine nodes
+                            # around the coarse one we want the value for.
+                            kshift = (0, 1)
+                            kweights = (0.5, 0.5)
+                            for i in ishift:
+                                yvalue = 0.0
+                                for j in jshift:
+                                    zvalue = 0.0
+                                    for k in kshift:
+                                        zvalue += (
+                                            fineData[
+                                                fineIndexX + i,
+                                                fineIndexY + j,
+                                                fineIndexZ + k,
+                                            ]
+                                            * kweights[k]
+                                        )
+                                    yvalue += zvalue * jweights[j]
+                                value += yvalue * iweights[i]
+                            coarseData[
+                                coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                            ] = value
 
                     if not is_primal[0] and not is_primal[1] and is_primal[2]:
                         if qty == "Bz":
@@ -262,7 +347,35 @@ def coarsen(qty, coarseField, fineField, coarseBox, fineData, coarseData):
                                 + fineData[fineIndexX + 1, fineIndexY + 1, fineIndexZ]
                             )
                         else:
-                            raise ValueError("PDP coarsening not implemented")
+                            value = 0.0
+                            # dual in X means taking the two dual fine nodes
+                            # around the coarse one we want the value for.
+                            ishift = (0, 1)
+                            iweights = (0.5, 0.5)
+
+                            jshift = (-1, 0, 1)
+                            jweights = (0.25, 0.5, 0.25)
+
+                            kshift = (-1, 0, 1)
+                            kweights = (0.25, 0.5, 0.25)
+                            for i in ishift:
+                                yvalue = 0.0
+                                for j in jshift:
+                                    zvalue = 0.0
+                                    for k in kshift:
+                                        zvalue += (
+                                            fineData[
+                                                fineIndexX + i,
+                                                fineIndexY + j,
+                                                fineIndexZ + k,
+                                            ]
+                                            * kweights[k]
+                                        )
+                                    yvalue += zvalue * jweights[j]
+                                value += yvalue * iweights[i]
+                            coarseData[
+                                coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                            ] = value
 
 
 if __name__ == "__main__":
