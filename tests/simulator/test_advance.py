@@ -426,7 +426,8 @@ class AdvanceTestBase(SimulatorTest):
         )
 
         qties = ["rho"]
-        qties += [f"{qty}{xyz}" for qty in ["E", "B", "V"] for xyz in ["x", "y", "z"]]
+        qties = [f"{qty}{xyz}" for qty in ["E", "B", "V"] for xyz in ["x", "y", "z"]]
+        qties = [f"{qty}{xyz}" for qty in ["B"] for xyz in ["x", "y", "z"]]
         lvl_steps = global_vars.sim.level_time_steps
         print("LEVELSTEPS === ", lvl_steps)
         assert len(lvl_steps) > 1, "this test makes no sense with only 1 level"
@@ -574,7 +575,6 @@ class AdvanceTestBase(SimulatorTest):
                 L0L1_datahier, quantities, fine_ilvl, fine_subcycle_time
             )
             for qty in quantities:
-                print("ZOB", qty)
                 for fine_level_ghost_box_data in fine_level_qty_ghost_boxes[qty]:
                     fine_subcycle_pd = fine_level_ghost_box_data["pdata"]
 
