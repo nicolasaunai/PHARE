@@ -254,7 +254,7 @@ MagneticFieldCoarsener<dim>::coarsen(Point_t const fineStartIndex, FieldT const&
         and centering_[dirY] == core::QtyCentering::dual
         and centering_[dirZ] == core::QtyCentering::dual)
     {
-        coarseField(coarseIndex[dirX], coarseIndex[dirY])
+        coarseField(coarseIndex[dirX], coarseIndex[dirY], coarseIndex[dirZ])
             = 0.25
               * (fineField(fineStartIndex[dirX], fineStartIndex[dirY], fineStartIndex[dirZ])
                  + fineField(fineStartIndex[dirX], fineStartIndex[dirY] + 1, fineStartIndex[dirZ])
@@ -286,7 +286,7 @@ MagneticFieldCoarsener<dim>::coarsen(Point_t const fineStartIndex, FieldT const&
              and centering_[dirY] == core::QtyCentering::primal
              and centering_[dirZ] == core::QtyCentering::dual)
     {
-        coarseField(coarseIndex[dirX], coarseIndex[dirY])
+        coarseField(coarseIndex[dirX], coarseIndex[dirY], coarseIndex[dirZ])
             = 0.25
               * (fineField(fineStartIndex[dirX], fineStartIndex[dirY], fineStartIndex[dirZ])
                  + fineField(fineStartIndex[dirX] + 1, fineStartIndex[dirY], fineStartIndex[dirZ])
@@ -318,7 +318,7 @@ MagneticFieldCoarsener<dim>::coarsen(Point_t const fineStartIndex, FieldT const&
              and centering_[dirY] == core::QtyCentering::dual
              and centering_[dirZ] == core::QtyCentering::primal)
     {
-        coarseField(coarseIndex[dirX], coarseIndex[dirY])
+        coarseField(coarseIndex[dirX], coarseIndex[dirY], coarseIndex[dirZ])
             = 0.25
               * (fineField(fineStartIndex[dirX], fineStartIndex[dirY], fineStartIndex[dirZ])
                  + fineField(fineStartIndex[dirX] + 1, fineStartIndex[dirY], fineStartIndex[dirZ])

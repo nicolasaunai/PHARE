@@ -102,6 +102,18 @@ def main(path="./"):
 
 
 def coarsen(qty, coarseField, fineField, coarseBox, fineData, coarseData):
+    """
+    this function takes data in fineData (the dataset from the fineFied FieldData object)
+    and put it in the coarseData dataset
+
+    The coarsening method is the equivalent (and union) of the C++ coarsening methods,
+    namely:
+    - DefaultFieldCoarsener, used for all fields (moments and E) but the magnetic field B
+    - MagneticFieldCoarsener, used for the magnetic field B
+
+    as in the C++ counterpart, we hard-code here that the layout of B follows the yee layout.
+    That is Bx is PDD, By is DPD and Bz is DDP
+    """
     coarseLayout = coarseField.layout
     fineLayout = fineField.layout
     ndim = coarseLayout.box.ndim
