@@ -102,6 +102,18 @@ def main(path="./"):
 
 
 def coarsen(qty, coarseField, fineField, coarseBox, fineData, coarseData):
+    """
+    this function takes data in fineData (the dataset from the fineFied FieldData object)
+    and put it in the coarseData dataset
+
+    The coarsening method is the equivalent (and union) of the C++ coarsening methods,
+    namely:
+    - DefaultFieldCoarsener, used for all fields (moments and E) but the magnetic field B
+    - MagneticFieldCoarsener, used for the magnetic field B
+
+    as in the C++ counterpart, we hard-code here that the layout of B follows the yee layout.
+    That is Bx is PDD, By is DPD and Bz is DDP
+    """
     coarseLayout = coarseField.layout
     fineLayout = fineField.layout
     ndim = coarseLayout.box.ndim
@@ -212,6 +224,170 @@ def coarsen(qty, coarseField, fineField, coarseBox, fineData, coarseData):
                         coarseData[coarseLocalIndexX][coarseLocalIndexY] = (
                             left * 0.5 + right * 0.5
                         )
+    if ndim == 3:
+        for indexX in coarse_indices(0):
+            fineIndexX = fineLocal(indexX, 0)
+            coarseLocalIndexX = coarseLocal(indexX, 0)
+
+            for indexY in coarse_indices(1):
+                fineIndexY = fineLocal(indexY, 1)
+                coarseLocalIndexY = coarseLocal(indexY, 1)
+
+                for indexZ in coarse_indices(2):
+                    fineIndexZ = fineLocal(indexZ, 2)
+                    coarseLocalIndexZ = coarseLocal(indexZ, 2)
+
+                    # all primal is for moments
+                    if all(is_primal):
+                        value = 0.0
+                        ishift = (-1, 0, 1)
+                        iweights = (0.25, 0.5, 0.25)
+                        jshift = (-1, 0, 1)
+                        jweights = (0.25, 0.5, 0.25)
+                        kshift = (-1, 0, 1)
+                        kweights = (0.25, 0.5, 0.25)
+                        for i in ishift:
+                            yvalue = 0.0
+                            for j in jshift:
+                                zvalue = 0.0
+                                for k in kshift:
+                                    zvalue += (
+                                        fineData[
+                                            fineIndexX + i,
+                                            fineIndexY + j,
+                                            fineIndexZ + k,
+                                        ]
+                                        * kweights[k]
+                                    )
+                                yvalue += zvalue * jweights[j]
+                            value += yvalue * iweights[i]
+                        coarseData[
+                            coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                        ] = value
+
+                    if is_primal[0] and not is_primal[1] and not is_primal[2]:
+                        if qty == "Bx":
+                            coarseData[
+                                coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                            ] = 0.25 * (
+                                fineData[fineIndexX, fineIndexY, fineIndexZ]
+                                + fineData[fineIndexX, fineIndexY + 1, fineIndexZ]
+                                + fineData[fineIndexX, fineIndexY, fineIndexZ + 1]
+                                + fineData[fineIndexX, fineIndexY + 1, fineIndexZ + 1]
+                            )
+
+                        else:  # Ey is also PDP
+                            value = 0.0
+                            ishift = (-1, 0, 1)
+                            iweights = (0.25, 0.5, 0.25)
+
+                            # dual in Y means taking the two dual fine nodes
+                            # around the coarse one we want the value for.
+                            jshift = (0, 1)
+                            jweights = (0.5, 0.5)
+
+                            kshift = (-1, 0, 1)
+                            kweights = (0.25, 0.5, 0.25)
+                            for i in ishift:
+                                yvalue = 0.0
+                                for j in jshift:
+                                    zvalue = 0.0
+                                    for k in kshift:
+                                        zvalue += (
+                                            fineData[
+                                                fineIndexX + i,
+                                                fineIndexY + j,
+                                                fineIndexZ + k,
+                                            ]
+                                            * kweights[k]
+                                        )
+                                    yvalue += zvalue * jweights[j]
+                                value += yvalue * iweights[i]
+                            coarseData[
+                                coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                            ] = value
+
+                    if not is_primal[0] and is_primal[1] and not is_primal[2]:
+                        if qty == "By":
+                            coarseData[
+                                coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                            ] = 0.25 * (
+                                fineData[fineIndexX, fineIndexY, fineIndexZ]
+                                + fineData[fineIndexX + 1, fineIndexY, fineIndexZ]
+                                + fineData[fineIndexX, fineIndexY, fineIndexZ + 1]
+                                + fineData[fineIndexX + 1, fineIndexY, fineIndexZ + 1]
+                            )
+                        else:  # Ez is PPD
+                            value = 0.0
+                            ishift = (-1, 0, 1)
+                            iweights = (0.25, 0.5, 0.25)
+
+                            jshift = (-1, 0, 1)
+                            jweights = (0.25, 0.5, 0.25)
+
+                            # dual in Z means taking the two dual fine nodes
+                            # around the coarse one we want the value for.
+                            kshift = (0, 1)
+                            kweights = (0.5, 0.5)
+                            for i in ishift:
+                                yvalue = 0.0
+                                for j in jshift:
+                                    zvalue = 0.0
+                                    for k in kshift:
+                                        zvalue += (
+                                            fineData[
+                                                fineIndexX + i,
+                                                fineIndexY + j,
+                                                fineIndexZ + k,
+                                            ]
+                                            * kweights[k]
+                                        )
+                                    yvalue += zvalue * jweights[j]
+                                value += yvalue * iweights[i]
+                            coarseData[
+                                coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                            ] = value
+
+                    if not is_primal[0] and not is_primal[1] and is_primal[2]:
+                        if qty == "Bz":
+                            coarseData[
+                                coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                            ] = 0.25 * (
+                                fineData[fineIndexX, fineIndexY, fineIndexZ]
+                                + fineData[fineIndexX + 1, fineIndexY, fineIndexZ]
+                                + fineData[fineIndexX, fineIndexY + 1, fineIndexZ]
+                                + fineData[fineIndexX + 1, fineIndexY + 1, fineIndexZ]
+                            )
+                        else:
+                            value = 0.0
+                            # dual in X means taking the two dual fine nodes
+                            # around the coarse one we want the value for.
+                            ishift = (0, 1)
+                            iweights = (0.5, 0.5)
+
+                            jshift = (-1, 0, 1)
+                            jweights = (0.25, 0.5, 0.25)
+
+                            kshift = (-1, 0, 1)
+                            kweights = (0.25, 0.5, 0.25)
+                            for i in ishift:
+                                yvalue = 0.0
+                                for j in jshift:
+                                    zvalue = 0.0
+                                    for k in kshift:
+                                        zvalue += (
+                                            fineData[
+                                                fineIndexX + i,
+                                                fineIndexY + j,
+                                                fineIndexZ + k,
+                                            ]
+                                            * kweights[k]
+                                        )
+                                    yvalue += zvalue * jweights[j]
+                                value += yvalue * iweights[i]
+                            coarseData[
+                                coarseLocalIndexX, coarseLocalIndexY, coarseLocalIndexZ
+                            ] = value
 
 
 if __name__ == "__main__":

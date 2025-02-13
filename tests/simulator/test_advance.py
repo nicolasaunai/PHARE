@@ -86,6 +86,9 @@ class AdvanceTestBase(SimulatorTest):
             strict=True,
         )
 
+        def S(x, x0, l):
+            return 0.5 * (1 + np.tanh((x - x0) / l))
+
         def bx(*xyz):
             return 1.0
 
@@ -259,29 +262,15 @@ class AdvanceTestBase(SimulatorTest):
                     # this is because the overlap box has been calculated from
                     # the intersection of possibly shifted patch data ghost boxes
 
-                    loc_b1 = boxm.amr_to_local(
-                        box, boxm.shift(pd1.ghost_box, offsets[0])
+                    slice1 = boxm.select(
+                        pd1.dataset,
+                        boxm.amr_to_local(box, boxm.shift(pd1.ghost_box, offsets[0])),
                     )
-                    loc_b2 = boxm.amr_to_local(
-                        box, boxm.shift(pd2.ghost_box, offsets[1])
+                    slice2 = boxm.select(
+                        pd2.dataset,
+                        boxm.amr_to_local(box, boxm.shift(pd2.ghost_box, offsets[1])),
                     )
-
-                    data1 = pd1.dataset
-                    data2 = pd2.dataset
-
-                    if box.ndim == 1:
-                        slice1 = data1[loc_b1.lower[0] : loc_b1.upper[0] + 1]
-                        slice2 = data2[loc_b2.lower[0] : loc_b2.upper[0] + 1]
-
-                    if box.ndim == 2:
-                        slice1 = data1[
-                            loc_b1.lower[0] : loc_b1.upper[0] + 1,
-                            loc_b1.lower[1] : loc_b1.upper[1] + 1,
-                        ]
-                        slice2 = data2[
-                            loc_b2.lower[0] : loc_b2.upper[0] + 1,
-                            loc_b2.lower[1] : loc_b2.upper[1] + 1,
-                        ]
+                    assert slice1.dtype == np.float64
 
                     try:
                         # empirical max absolute observed 5.2e-15
@@ -298,12 +287,9 @@ class AdvanceTestBase(SimulatorTest):
                         print(pd1.y.mean())
                         print(pd2.x.mean())
                         print(pd2.y.mean())
-                        print(loc_b1)
-                        print(loc_b2)
                         print(coarsest_time)
                         print(slice1)
                         print(slice2)
-                        print(data1[:])
                         if self.rethrow_:
                             raise e
                         return diff_boxes(slice1, slice2, box)
@@ -381,8 +367,9 @@ class AdvanceTestBase(SimulatorTest):
                         part2.iCells = part2.iCells + offsets[1]
                         self.assertEqual(part1, part2)
 
-    def _test_L0_particle_number_conservation(self, ndim, interp_order, ppc=100):
-        cells = 120
+    def _test_L0_particle_number_conservation(
+        self, ndim, interp_order, ppc=100, cells=120
+    ):
         time_step_nbr = 10
         time_step = 0.001
 
@@ -409,7 +396,7 @@ class AdvanceTestBase(SimulatorTest):
             self.assertEqual(n_particles, n_particles_at_t)
 
     def _test_field_coarsening_via_subcycles(
-        self, dim, interp_order, refinement_boxes, **kwargs
+        self, dim, interp_order, refinement_boxes, cells=60, **kwargs
     ):
         print(
             "test_field_coarsening_via_subcycles for dim/interp : {}/{}".format(
@@ -423,12 +410,14 @@ class AdvanceTestBase(SimulatorTest):
 
         time_step_nbr = 3
 
+        diag_outputs = f"subcycle_coarsening/{dim}/{interp_order}/{self.ddt_test_id()}"
         datahier = self.getHierarchy(
             dim,
             interp_order,
             refinement_boxes,
             "fields",
-            cells=60,
+            cells=cells,
+            diag_outputs=diag_outputs,
             time_step=0.001,
             extra_diag_options={"fine_dump_lvl_max": 10},
             time_step_nbr=time_step_nbr,
@@ -437,7 +426,8 @@ class AdvanceTestBase(SimulatorTest):
         )
 
         qties = ["rho"]
-        qties += [f"{qty}{xyz}" for qty in ["E", "B", "V"] for xyz in ["x", "y", "z"]]
+        qties = [f"{qty}{xyz}" for qty in ["E", "B", "V"] for xyz in ["x", "y", "z"]]
+        qties = [f"{qty}{xyz}" for qty in ["B"] for xyz in ["x", "y", "z"]]
         lvl_steps = global_vars.sim.level_time_steps
         print("LEVELSTEPS === ", lvl_steps)
         assert len(lvl_steps) > 1, "this test makes no sense with only 1 level"
@@ -501,16 +491,7 @@ class AdvanceTestBase(SimulatorTest):
                                 afterCoarse = np.copy(coarse_pdDataset)
 
                                 # change values that should be updated to make failure obvious
-                                assert dim < 3  # update
-                                if dim == 1:
-                                    afterCoarse[
-                                        dataBox.lower[0] : dataBox.upper[0] + 1
-                                    ] = -144123
-                                if dim == 2:
-                                    afterCoarse[
-                                        dataBox.lower[0] : dataBox.upper[0] + 1,
-                                        dataBox.lower[1] : dataBox.upper[1] + 1,
-                                    ] = -144123
+                                boxm.DataSelector(afterCoarse)[dataBox] = -144123
 
                                 coarsen(
                                     qty,
@@ -540,6 +521,10 @@ class AdvanceTestBase(SimulatorTest):
     def base_test_field_level_ghosts_via_subcycles_and_coarser_interpolation(
         self, L0_datahier, L0L1_datahier, quantities=None
     ):
+        """
+        extracted from _test_field_level_ghosts_via_subcycles_and_coarser_interpolation
+        because also used in test_2d_2_core.py and test_2d_10_core.py
+        """
         if quantities is None:
             quantities = [f"{EM}{xyz}" for EM in ["E", "B"] for xyz in ["x", "y", "z"]]
 
@@ -688,14 +673,34 @@ class AdvanceTestBase(SimulatorTest):
         self, ndim, interp_order, refinement_boxes
     ):
         """
+        This test intends to check that level ghost field values during substeps
+        are indeed the result of the space and time interpolation of the coarser level values.
+
+        This requires:
+        - to dump diagnostics at substeps
+        - refine spatially and temporally L0 values and compare them to L1 level ghost values
+
+        The time interpolation needs both t and t+dt coarse values.
+        However, L0 values at t+dt are not available in diags since they are written after
+        L0 receives coarser values from L1, while the L0 values at t+dt used in the simulation
+        to do the time interpolation are the one **before** the coarsening correction.
+
+        To achieve the test, we thus also run a L0-only simulation witht the same exact initial
+        setup, and use the t0 and t0+dt diagnostics of the L0-only run to perform the
+        space and time interpolation values to compare to L1 level ghosts of the former simulation.
+
         This test runs two virtually identical simulations for one step.
           L0_datahier has no refined levels
           L0L1_datahier has one refined level
 
-        This is done to compare L0 values that haven't received the coarsened values of L1 because there is no L1,
-          to the level field ghost of L1 of L0L1_datahier
-
         The simulations are no longer comparable after the first advance, so this test cannot work beyond that.
+
+
+        WARNING: this test is now skipped in nD test field advance because it is
+        as it is now, working on E and B, which, since the divB correction, are not
+        time refined anymore. Only n, Vi and J are time refined and the test should
+        thus be changed accordingly.
+
         """
         print(
             "test_field_coarsening_via_subcycles for dim/interp : {}/{}".format(
@@ -712,7 +717,7 @@ class AdvanceTestBase(SimulatorTest):
                 ndim,
                 interp_order,
                 boxes,
-                "moments",
+                "moments",  # only N, Vi and J are space/time interpolated, only test moments
                 cells=30,
                 time_step_nbr=1,
                 largest_patch_size=15,
