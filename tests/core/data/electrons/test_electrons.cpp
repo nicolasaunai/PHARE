@@ -151,6 +151,8 @@ struct ElectronsTest : public ::testing::Test
     UsableVecField<dim> J, F, Ve, Vi;
     UsableTensorField<dim> M, protons_M;
 
+    UsableVecField<dim> B;
+
     GridND Nibuffer, NiProtons, Pe;
 
     ParticleArray_t domainParticles{layout.AMRBox()};
@@ -188,6 +190,7 @@ struct ElectronsTest : public ::testing::Test
 
     ElectronsTest()
         : electromag{createDict<dim>()["electromag"]}
+        , B{"B", layout, HybridQuantity::Vector::B}
         , J{"J", layout, HybridQuantity::Vector::J}
         , F{"protons_flux", layout, HybridQuantity::Vector::V}
         , Ve{"StandardHybridElectronFluxComputer_Ve", layout, HybridQuantity::Vector::V}
@@ -201,16 +204,17 @@ struct ElectronsTest : public ::testing::Test
         , Pe{"Pe", HybridQuantity::Scalar::P, layout.allocSize(HybridQuantity::Scalar::P)}
         , ions{_ions(F, Nibuffer, NiProtons, Vi, M, protons_M, pack)}
         , fluxCompute{ions, J}
-        , electrons{createDict<dim>()["electrons"], fluxCompute}
+        , electrons{createDict<dim>()["electrons"], fluxCompute, B}
     {
         /* TODO explain why... we have 2 flux computer : 1 is the flux computer and the same is a copy in the pressure closure */
         auto&& emm = std::get<0>(electrons.getCompileTimeResourcesViewList());
         auto&& fc  = std::get<0>(emm.getCompileTimeResourcesViewList());
-        auto&& pc  = std::get<1>(emm.getCompileTimeResourcesViewList());
-        auto&& f_zob = std::get<0>(pc.getCompileTimeResourcesViewList());
+        auto&& pc  = std::get<2>(emm.getCompileTimeResourcesViewList());
+        auto&& fc_ = std::get<0>(pc.getCompileTimeResourcesViewList());
 
         Ve.set_on(std::get<0>(fc.getCompileTimeResourcesViewList()));
-        Ve.set_on(std::get<0>(f_zob.getCompileTimeResourcesViewList()));
+        B.set_on(std::get<1>(emm.getCompileTimeResourcesViewList()));
+        Ve.set_on(std::get<0>(fc_.getCompileTimeResourcesViewList()));
 
         auto const& [_, P] = pc.getCompileTimeResourcesViewList();
         P.setBuffer(&Pe);

@@ -268,6 +268,7 @@ public:
     PolytropicElectronPressureClosure(PHARE::initializer::PHAREDict const& dict,
                                       FluxComputer const& flux)
         : Super{dict, flux}
+        , gamma_{dict["pressure_closure"]["Gamma"].template to<double>()}
         , Pe_init_{dict["pressure_closure"]["Pe"].template to<initializer::InitFunction<dim>>()}
     {
     }
@@ -282,7 +283,57 @@ public:
         static_assert(Field::is_contiguous, "Error - assumes Field date is contiguous");
 
         if (!this->Pe_.isUsable())
-            throw std::runtime_error("Error - !!! isothermal closure pressure not usable");
+            throw std::runtime_error("Error - polytropic pressure closure not usable");
+
+        auto const& Ne_ = this->flux_.density();
+        std::transform(std::begin(Ne_), std::end(Ne_), std::begin(this->Pe_),
+                       [this](auto n) { return n * 0.1 + 0. * gamma_; });
+    }
+
+private:
+    double const gamma_ = 5./3.;
+    initializer::InitFunction<dim> Pe_init_;
+};
+
+
+
+template<typename FluxComputer>
+class CGLElectronPressureClosure : public ElectronPressureClosure<FluxComputer>
+{
+    using GridLayout = typename FluxComputer::GridLayout;
+    using VecField   = typename FluxComputer::VecField;
+    using Field      = typename FluxComputer::Field;
+
+    using Super = ElectronPressureClosure<FluxComputer>;
+    using Super::getCompileTimeResourcesViewList;
+    using Super::isSettable;
+    using Super::isUsable;
+
+    static constexpr std::size_t dim = VecField::dimension;
+
+
+public:
+    using field_type = Field;
+
+    CGLElectronPressureClosure(PHARE::initializer::PHAREDict const& dict,
+                                      FluxComputer const& flux, VecField const& B)
+        : Super{dict, flux}
+        , gamma_{dict["pressure_closure"]["Gamma"].template to<double>()}
+        , Pe_init_{dict["pressure_closure"]["Pe"].template to<initializer::InitFunction<dim>>()}
+    {
+    }
+
+    void initialize(GridLayout const& layout) override
+    {
+        FieldUserFunctionInitializer::initialize(this->Pe_, layout, Pe_init_);
+    }
+
+    void computePressure(GridLayout const& /*layout*/) override
+    {
+        static_assert(Field::is_contiguous, "Error - assumes Field date is contiguous");
+
+        if (!this->Pe_.isUsable())
+            throw std::runtime_error("Error - CGL pressure closure not usable");
 
         auto const& Ne_ = this->flux_.density();
         std::transform(std::begin(Ne_), std::end(Ne_), std::begin(this->Pe_),
@@ -290,6 +341,7 @@ public:
     }
 
 private:
+    double const gamma_ = 5./3.;
     initializer::InitFunction<dim> Pe_init_;
 };
 
@@ -297,7 +349,7 @@ private:
 
 template<typename FluxComputer>
 std::unique_ptr<ElectronPressureClosure<FluxComputer>>
-ElectronPressureClosureFactory(PHARE::initializer::PHAREDict const& dict, FluxComputer& flux)
+ElectronPressureClosureFactory(PHARE::initializer::PHAREDict const& dict, FluxComputer& flux, typename FluxComputer::VecField const& B)
 {
     if (dict["pressure_closure"]["name"].template to<std::string>() == "isothermal")
     {
@@ -306,6 +358,10 @@ ElectronPressureClosureFactory(PHARE::initializer::PHAREDict const& dict, FluxCo
     else if (dict["pressure_closure"]["name"].template to<std::string>() == "polytropic")
     {
         return std::make_unique<PolytropicElectronPressureClosure<FluxComputer>>(dict, flux);
+    }
+    else if (dict["pressure_closure"]["name"].template to<std::string>() == "CGL")
+    {
+        return std::make_unique<CGLElectronPressureClosure<FluxComputer>>(dict, flux, B);
     }
     return nullptr;
 }
@@ -320,17 +376,19 @@ class ElectronMomentModel
     using Field      = typename FluxComputer::Field;
 
 public:
-    ElectronMomentModel(PHARE::initializer::PHAREDict const& dict, FluxComputer& flux)
+    ElectronMomentModel(PHARE::initializer::PHAREDict const& dict, FluxComputer& flux, VecField const& B)
         : dict_{dict}
         , fluxComput_{flux}
-        , pressureClosure_{ElectronPressureClosureFactory<FluxComputer>(dict, flux)}
+        , B_{B}
+        , pressureClosure_{ElectronPressureClosureFactory<FluxComputer>(dict, flux, B)}
     {
     }
 
     ElectronMomentModel(ElectronMomentModel const& self)
         : dict_{self.dict_}
         , fluxComput_{self.fluxComput_}
-        , pressureClosure_{ElectronPressureClosureFactory<FluxComputer>(dict_, fluxComput_)}
+        , B_{self.B_}
+        , pressureClosure_{ElectronPressureClosureFactory<FluxComputer>(dict_, fluxComput_, B_)}
     {
         *pressureClosure_ = *self.pressureClosure_;
     }
@@ -341,19 +399,23 @@ public:
 
     NO_DISCARD bool isUsable() const
     {
-        return fluxComput_.isUsable() and pressureClosure_->isUsable();
+        // return fluxComput_.isUsable() and pressureClosure_->isUsable();
+        return fluxComput_.isUsable() and B_.isUsable() and pressureClosure_->isUsable();
     }
 
-    NO_DISCARD bool isSettable() const { return fluxComput_.isSettable(); }
+    // NO_DISCARD bool isSettable() const { return fluxComput_.isSettable(); }  // TODO pressureClosure needs also to be settable ?
+    NO_DISCARD bool isSettable() const { return fluxComput_.isSettable() and B_.isSettable() and pressureClosure_->isSettable(); }
 
     NO_DISCARD auto getCompileTimeResourcesViewList() const
     {
-        return std::forward_as_tuple(fluxComput_, *pressureClosure_);
+        // return std::forward_as_tuple(fluxComput_, *pressureClosure_);
+        return std::forward_as_tuple(fluxComput_, B_, *pressureClosure_);
     }
 
     NO_DISCARD auto getCompileTimeResourcesViewList()
     {
-        return std::forward_as_tuple(fluxComput_, *pressureClosure_);
+        // return std::forward_as_tuple(fluxComput_, *pressureClosure_);
+        return std::forward_as_tuple(fluxComput_, B_, *pressureClosure_);
     }
 
     //-------------------------------------------------------------------------
@@ -377,6 +439,7 @@ public:
 private:
     initializer::PHAREDict dict_;
     FluxComputer fluxComput_;
+    VecField B_;
     std::unique_ptr<ElectronPressureClosure<FluxComputer>> pressureClosure_;
 };
 
@@ -390,9 +453,9 @@ class Electrons : public LayoutHolder<typename FluxComputer::GridLayout>
     using Field      = typename FluxComputer::Field;
 
 public:
-    Electrons(initializer::PHAREDict const& dict, FluxComputer flux)
+    Electrons(initializer::PHAREDict const& dict, FluxComputer flux, VecField const& B)
         : dict_{dict}
-        , momentModel_{dict, flux}
+        , momentModel_{dict, flux, B}
     {
     }
 

@@ -425,7 +425,6 @@ def populateDict():
             elif isinstance(item[1], float):
                 add_double("simulation/" + item[0], item[1])
             elif isinstance(item[1], Callable):
-                # print(type(item[1]))
                 addInitFunction("simulation/" + item[0], fn_wrapper(item[1]))
             else:
                 raise ValueError(f"acceptable entries should be int, float or collable")
