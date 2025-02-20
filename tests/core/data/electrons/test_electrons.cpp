@@ -215,8 +215,9 @@ struct ElectronsTest : public ::testing::Test
         Ve.set_on(std::get<0>(fc.getCompileTimeResourcesViewList()));
         B.set_on(std::get<1>(emm.getCompileTimeResourcesViewList()));
         Ve.set_on(std::get<0>(fc_.getCompileTimeResourcesViewList()));
+        B.set_on(std::get<1>(pc.getCompileTimeResourcesViewList()));
 
-        auto const& [_, P] = pc.getCompileTimeResourcesViewList();
+        auto const& [_, b, P] = pc.getCompileTimeResourcesViewList();
         P.setBuffer(&Pe);
 
         auto const& [Jx, Jy, Jz]    = J();
