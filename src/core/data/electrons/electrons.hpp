@@ -156,9 +156,9 @@ public:
     //                  start the ResourcesUser interface
     //-------------------------------------------------------------------------
 
-    NO_DISCARD bool isUsable() const { return Pe_.isUsable() and flux_.isUsable(); }
+    NO_DISCARD virtual bool isUsable() const { return Pe_.isUsable() and flux_.isUsable(); }
 
-    NO_DISCARD bool isSettable() const { return Pe_.isSettable(); }
+    NO_DISCARD virtual bool isSettable() const { return Pe_.isSettable(); }
 
     struct PressureProperty
     {
@@ -168,12 +168,16 @@ public:
 
     using PressureProperties = std::vector<PressureProperty>;
 
-    NO_DISCARD auto getCompileTimeResourcesViewList() const
-    {
-        return std::forward_as_tuple(flux_, Pe_);
-    }
 
-    NO_DISCARD auto getCompileTimeResourcesViewList() { return std::forward_as_tuple(flux_, Pe_); }
+
+    // NO_DISCARD auto getCompileTimeResourcesViewList() const
+    // {
+    //     return std::forward_as_tuple(flux_, Pe_);
+    // }
+
+    // NO_DISCARD auto getCompileTimeResourcesViewList() { return std::forward_as_tuple(flux_, Pe_); }
+
+
 
     //-------------------------------------------------------------------------
     //                  ends the ResourcesUser interface
@@ -227,6 +231,13 @@ public:
     {
     }
 
+    NO_DISCARD auto getCompileTimeResourcesViewList() const
+    {
+        return std::forward_as_tuple(this->flux_, this->Pe_);
+    }
+
+    NO_DISCARD auto getCompileTimeResourcesViewList() { return std::forward_as_tuple(this->flux_, this->Pe_); }
+
     void initialize(GridLayout const& layout) override {}
 
     void computePressure(GridLayout const& /*layout*/) override
@@ -272,6 +283,13 @@ public:
         , Pe_init_{dict["pressure_closure"]["Pe"].template to<initializer::InitFunction<dim>>()}
     {
     }
+
+    NO_DISCARD auto getCompileTimeResourcesViewList() const
+    {
+        return std::forward_as_tuple(this->flux_, this->Pe_);
+    }
+
+    NO_DISCARD auto getCompileTimeResourcesViewList() { return std::forward_as_tuple(this->flux_, this->Pe_); }
 
     void initialize(GridLayout const& layout) override
     {
@@ -319,9 +337,21 @@ public:
                                       FluxComputer const& flux, VecField const& B)
         : Super{dict, flux}
         , gamma_{dict["pressure_closure"]["Gamma"].template to<double>()}
+        , B_{B}
         , Pe_init_{dict["pressure_closure"]["Pe"].template to<initializer::InitFunction<dim>>()}
     {
     }
+
+    NO_DISCARD auto getCompileTimeResourcesViewList() const
+    {
+        return std::forward_as_tuple(this->flux_, B_, this->Pe_);
+    }
+
+    NO_DISCARD auto getCompileTimeResourcesViewList() { return std::forward_as_tuple(this->flux_, B_, this->Pe_); }
+
+    NO_DISCARD bool isUsable() const override { return this->Pe_.isUsable() and this->flux_.isUsable(); }
+
+    NO_DISCARD bool isSettable() const override { return this->Pe_.isSettable(); }
 
     void initialize(GridLayout const& layout) override
     {
@@ -342,6 +372,7 @@ public:
 
 private:
     double const gamma_ = 5./3.;
+    VecField B_;
     initializer::InitFunction<dim> Pe_init_;
 };
 
