@@ -206,16 +206,17 @@ struct ElectronsTest : public ::testing::Test
         , fluxCompute{ions, J}
         , electrons{createDict<dim>()["electrons"], fluxCompute, B}
     {
-        /* TODO explain why... we have 2 flux computer : 1 is the flux computer and the same is a copy in the pressure closure */
+        /* TODO explain why... we have 2 flux computer : 1 is the flux computer and the same is a
+         * copy in the pressure closure */
         auto&& emm = std::get<0>(electrons.getCompileTimeResourcesViewList());
         auto&& fc  = std::get<0>(emm.getCompileTimeResourcesViewList());
-        auto&& pc  = std::get<2>(emm.getCompileTimeResourcesViewList());
+        auto&& pc  = std::get<1>(emm.getCompileTimeResourcesViewList());
         auto&& fc_ = std::get<0>(pc.getCompileTimeResourcesViewList());
 
         Ve.set_on(std::get<0>(fc.getCompileTimeResourcesViewList()));
-        B.set_on(std::get<1>(emm.getCompileTimeResourcesViewList()));
+        // B.set_on(std::get<1>(emm.getCompileTimeResourcesViewList()));
         Ve.set_on(std::get<0>(fc_.getCompileTimeResourcesViewList()));
-        B.set_on(std::get<1>(pc.getCompileTimeResourcesViewList()));
+        // B.set_on(std::get<1>(pc.getCompileTimeResourcesViewList()));
 
         auto const& [_, b, P] = pc.getCompileTimeResourcesViewList();
         P.setBuffer(&Pe);

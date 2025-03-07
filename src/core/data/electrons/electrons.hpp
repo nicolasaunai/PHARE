@@ -147,9 +147,9 @@ class ElectronPressureClosure
     using Field      = typename FluxComputer::Field;
 
 public:
-    ElectronPressureClosure(PHARE::initializer::PHAREDict const& dict, FluxComputer const& flux, VecField const& B)
+    ElectronPressureClosure(PHARE::initializer::PHAREDict const& dict, FluxComputer const& flux,
+                            VecField const& B)
         : flux_{flux}
-        , B_{B}
         , Pe_{"Pe", HybridQuantity::Scalar::P}
     {
     }
@@ -158,9 +158,12 @@ public:
     //                  start the ResourcesUser interface
     //-------------------------------------------------------------------------
 
-    NO_DISCARD virtual bool isUsable() const { return Pe_.isUsable() and B_.isUsable() and flux_.isUsable(); }
+    NO_DISCARD virtual bool isUsable() const { return Pe_.isUsable() and flux_.isUsable(); }
 
-    NO_DISCARD virtual bool isSettable() const { return Pe_.isSettable() and B_.isUsable() and flux_.isUsable(); }  // TODO flux was not usable before
+    NO_DISCARD virtual bool isSettable() const
+    {
+        return Pe_.isSettable() and flux_.isUsable();
+    } // TODO flux was not usable before
 
     struct PressureProperty
     {
@@ -170,16 +173,21 @@ public:
 
     using PressureProperties = std::vector<PressureProperty>;
 
-    NO_DISCARD auto getCompileTimeResourcesViewList() const
+    NO_DISCARD virtual std::tuple<FluxComputer, Field> getCompileTimeResourcesViewList() const
     {
-        return std::forward_as_tuple(flux_, B_, Pe_);
+        return std::forward_as_tuple(flux_, Pe_);
     }
 
-    NO_DISCARD auto getCompileTimeResourcesViewList() { return std::forward_as_tuple(flux_, B_, Pe_); }
+    NO_DISCARD virtual std::tuple<FluxComputer, Field> getCompileTimeResourcesViewList()
+    {
+        return std::forward_as_tuple(flux_, Pe_);
+    }
 
     //-------------------------------------------------------------------------
     //                  ends the ResourcesUser interface
     //-------------------------------------------------------------------------
+
+    virtual std::unique_ptr<ElectronPressureClosure> make_unique() const = 0;
 
 
     void virtual initialize(GridLayout const& layout) = 0;
@@ -224,10 +232,15 @@ public:
     using field_type = Field;
 
     IsothermalElectronPressureClosure(PHARE::initializer::PHAREDict const& dict,
-                                      FluxComputer const& flux, VecField const& B)
-        : Super{dict, flux, B}
+                                      FluxComputer const& flux)
+        : Super{dict, flux}
         , Te_{dict["pressure_closure"]["Te"].template to<double>()}
     {
+    }
+
+    virtual std::unique_ptr<Super> make_unique() const override
+    {
+        return std::make_unique<Super>(*this);
     }
 
     void initialize(GridLayout const& layout) override {}
@@ -269,11 +282,16 @@ public:
     using field_type = Field;
 
     PolytropicElectronPressureClosure(PHARE::initializer::PHAREDict const& dict,
-                                      FluxComputer const& flux, VecField const& B)
-        : Super{dict, flux, B}
+                                      FluxComputer const& flux)
+        : Super{dict, flux}
         , gamma_{dict["pressure_closure"]["Gamma"].template to<double>()}
         , Pe_init_{dict["pressure_closure"]["Pe"].template to<initializer::InitFunction<dim>>()}
     {
+    }
+
+    virtual std::unique_ptr<Super> make_unique() const override
+    {
+        return std::make_unique<Super>(*this);
     }
 
     void initialize(GridLayout const& layout) override
@@ -294,7 +312,7 @@ public:
     }
 
 private:
-    double const gamma_ = 5./3.;
+    double const gamma_ = 5. / 3.;
     initializer::InitFunction<dim> Pe_init_;
 };
 
@@ -318,12 +336,29 @@ class CGLElectronPressureClosure : public ElectronPressureClosure<FluxComputer>
 public:
     using field_type = Field;
 
-    CGLElectronPressureClosure(PHARE::initializer::PHAREDict const& dict,
-                                      FluxComputer const& flux, VecField const& B)
-        : Super{dict, flux, B}
+    CGLElectronPressureClosure(PHARE::initializer::PHAREDict const& dict, FluxComputer const& flux,
+                               VecField const& B)
+        : Super{dict, flux}
         , gamma_{dict["pressure_closure"]["Gamma"].template to<double>()}
         , Pe_init_{dict["pressure_closure"]["Pe"].template to<initializer::InitFunction<dim>>()}
+        , B_{B}
     {
+    }
+
+    NO_DISCARD std::tuple<FluxComputer, Field, VecField>
+    getCompileTimeResourcesViewList() const override
+    {
+        return std::forward_as_tuple(this->flux_, this->Pe_, B_);
+    }
+
+    NO_DISCARD std::tuple<FluxComputer, Field, VecField> getCompileTimeResourcesViewList() override
+    {
+        return std::forward_as_tuple(this->flux_, this->Pe_, B_);
+    }
+
+    virtual std::unique_ptr<Super> make_unique() const override
+    {
+        return std::make_unique<Super>(*this);
     }
 
     void initialize(GridLayout const& layout) override
@@ -344,26 +379,30 @@ public:
     }
 
 private:
-    double const gamma_ = 5./3.;
+    double const gamma_ = 5. / 3.;
     initializer::InitFunction<dim> Pe_init_;
+    VecField B_;
 };
 
 
 
-template<typename FluxComputer>
+template<typename FluxComputer, typename... Args>
 std::unique_ptr<ElectronPressureClosure<FluxComputer>>
-ElectronPressureClosureFactory(PHARE::initializer::PHAREDict const& dict, FluxComputer& flux, typename FluxComputer::VecField const& B)
+ElectronPressureClosureFactory(PHARE::initializer::PHAREDict const& dict, FluxComputer& flux,
+                               Args&... args)
 {
     if (dict["pressure_closure"]["name"].template to<std::string>() == "isothermal")
     {
-        return std::make_unique<IsothermalElectronPressureClosure<FluxComputer>>(dict, flux, B);
+        return std::make_unique<IsothermalElectronPressureClosure<FluxComputer>>(dict, flux);
     }
     else if (dict["pressure_closure"]["name"].template to<std::string>() == "polytropic")
     {
-        return std::make_unique<PolytropicElectronPressureClosure<FluxComputer>>(dict, flux, B);
+        return std::make_unique<PolytropicElectronPressureClosure<FluxComputer>>(dict, flux);
     }
     else if (dict["pressure_closure"]["name"].template to<std::string>() == "CGL")
     {
+        auto argtuples = std::make_tuple<Args&...>(args...);
+        auto const& B  = std::get<0>(argtuples);
         return std::make_unique<CGLElectronPressureClosure<FluxComputer>>(dict, flux, B);
     }
     return nullptr;
@@ -379,21 +418,20 @@ class ElectronMomentModel
     using Field      = typename FluxComputer::Field;
 
 public:
-    ElectronMomentModel(PHARE::initializer::PHAREDict const& dict, FluxComputer& flux, VecField const& B)
+    template<typename... Args>
+    ElectronMomentModel(PHARE::initializer::PHAREDict const& dict, FluxComputer& flux,
+                        Args&... args)
         : dict_{dict}
         , fluxComput_{flux}
-        , B_{B}
-        , pressureClosure_{ElectronPressureClosureFactory<FluxComputer>(dict, flux, B)}
+        , pressureClosure_{ElectronPressureClosureFactory<FluxComputer>(dict, flux, args...)}
     {
     }
 
     ElectronMomentModel(ElectronMomentModel const& self)
         : dict_{self.dict_}
         , fluxComput_{self.fluxComput_}
-        , B_{self.B_}
-        , pressureClosure_{ElectronPressureClosureFactory<FluxComputer>(dict_, fluxComput_, B_)}
+        , pressureClosure_{self.pressureClosure_->make_unique()}
     {
-        *pressureClosure_ = *self.pressureClosure_;
     }
 
     //-------------------------------------------------------------------------
@@ -403,22 +441,26 @@ public:
     NO_DISCARD bool isUsable() const
     {
         // return fluxComput_.isUsable() and pressureClosure_->isUsable();
-        return fluxComput_.isUsable() and B_.isUsable() and pressureClosure_->isUsable();
+        return fluxComput_.isUsable() and pressureClosure_->isUsable();
     }
 
-    // NO_DISCARD bool isSettable() const { return fluxComput_.isSettable(); }  // TODO pressureClosure needs also to be settable ?
-    NO_DISCARD bool isSettable() const { return fluxComput_.isSettable() and B_.isSettable() and pressureClosure_->isSettable(); }
+    // NO_DISCARD bool isSettable() const { return fluxComput_.isSettable(); }  // TODO
+    // pressureClosure needs also to be settable ?
+    NO_DISCARD bool isSettable() const
+    {
+        return fluxComput_.isSettable() and pressureClosure_->isSettable();
+    }
 
     NO_DISCARD auto getCompileTimeResourcesViewList() const
     {
         // return std::forward_as_tuple(fluxComput_, *pressureClosure_);
-        return std::forward_as_tuple(fluxComput_, B_, *pressureClosure_);
+        return std::forward_as_tuple(fluxComput_, *pressureClosure_);
     }
 
     NO_DISCARD auto getCompileTimeResourcesViewList()
     {
         // return std::forward_as_tuple(fluxComput_, *pressureClosure_);
-        return std::forward_as_tuple(fluxComput_, B_, *pressureClosure_);
+        return std::forward_as_tuple(fluxComput_, *pressureClosure_);
     }
 
     //-------------------------------------------------------------------------
@@ -442,7 +484,6 @@ public:
 private:
     initializer::PHAREDict dict_;
     FluxComputer fluxComput_;
-    VecField B_;
     std::unique_ptr<ElectronPressureClosure<FluxComputer>> pressureClosure_;
 };
 
@@ -456,9 +497,10 @@ class Electrons : public LayoutHolder<typename FluxComputer::GridLayout>
     using Field      = typename FluxComputer::Field;
 
 public:
-    Electrons(initializer::PHAREDict const& dict, FluxComputer flux, VecField const& B)
+    template<typename... Args>
+    Electrons(initializer::PHAREDict const& dict, FluxComputer flux, Args&... args)
         : dict_{dict}
-        , momentModel_{dict, flux, B}
+        , momentModel_{dict, flux, args...}
     {
     }
 
