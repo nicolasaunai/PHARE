@@ -32,7 +32,7 @@
 
 #include <SAMRAI/xfer/RefineAlgorithm.h>
 #include <SAMRAI/xfer/RefineSchedule.h>
-
+#include "SAMRAI/xfer/BoxGeometryVariableFillPattern.h"
 
 #include <iterator>
 #include <optional>
@@ -40,6 +40,71 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
+
+
+class XVariableFillPattern : public SAMRAI::xfer::BoxGeometryVariableFillPattern
+{
+};
+
+class YVariableFillPattern : public SAMRAI::xfer::BoxGeometryVariableFillPattern
+{
+};
+
+class ZVariableFillPattern : public SAMRAI::xfer::BoxGeometryVariableFillPattern
+{
+};
+
+
+template<typename ResMan, typename FieldDataT>
+class MagneticPatchRefineStrategy : public SAMRAI::xfer::RefinePatchStrategy
+{
+public:
+    MagneticPatchRefineStrategy(ResMan& resourcesManager)
+        : rm_{resourcesManager}
+    {
+    }
+
+    void setPhysicalBoundaryConditions(SAMRAI::hier::Patch& patch, double const fill_time,
+                                       const SAMRAI::hier::IntVector& ghost_width_to_fill)
+    {
+    }
+
+    SAMRAI::hier::IntVector getRefineOpStencilWidth(const SAMRAI::tbox::Dimension& dim) const
+    {
+        return SAMRAI::hier::IntVector(dim, 1);
+    }
+
+
+    void preprocessRefine(SAMRAI::hier::Patch& fine, SAMRAI::hier::Patch const& coarse,
+                          SAMRAI::hier::Box const& fine_box, SAMRAI::hier::IntVector const& ratio)
+    {
+    }
+
+    void postprocessRefine(SAMRAI::hier::Patch& fine, SAMRAI::hier::Patch const& coarse,
+                           SAMRAI::hier::Box const& fine_box, SAMRAI::hier::IntVector const& ratio)
+    {
+        auto bx_id = rm_.getID("EM_B_x");
+        auto by_id = rm_.getID("EM_B_y");
+        auto bz_id = rm_.getID("EM_B_z");
+
+        auto& bx = FieldDataT::getField(fine, *bx_id);
+        auto& by = FieldDataT::getField(fine, *by_id);
+        auto& bz = FieldDataT::getField(fine, *bz_id);
+
+
+        if constexpr (FieldDataT::dimension == 2)
+        {
+            auto const bxval = bx(0, 0);
+            for (auto& value : by)
+            {
+                value = bxval;
+            }
+        }
+    }
+
+private:
+    ResMan& rm_;
+};
 
 
 namespace PHARE
@@ -133,6 +198,28 @@ namespace amr
             std::unique_ptr<HybridMessengerInfo> hybridInfo{
                 dynamic_cast<HybridMessengerInfo*>(fromFinerInfo.release())};
 
+            std::shared_ptr<SAMRAI::xfer::VariableFillPattern> xVariableFillPattern
+                = std::make_shared<XVariableFillPattern>();
+            std::shared_ptr<SAMRAI::xfer::VariableFillPattern> yVariableFillPattern
+                = std::make_shared<YVariableFillPattern>();
+            std::shared_ptr<SAMRAI::xfer::VariableFillPattern> zVariableFillPattern
+                = std::make_shared<ZVariableFillPattern>();
+
+            std::cout << "BITE " << hybridInfo->modelMagnetic.xName << "\n";
+            auto bx_id = resourcesManager_->getID(hybridInfo->modelMagnetic.xName);
+            auto by_id = resourcesManager_->getID(hybridInfo->modelMagnetic.yName);
+            auto bz_id = resourcesManager_->getID(hybridInfo->modelMagnetic.zName);
+            Balgo.registerRefine(*bx_id, *bx_id, *bx_id, BfieldNodeRefineOp_, xVariableFillPattern);
+            Balgo.registerRefine(*by_id, *by_id, *by_id, BfieldNodeRefineOp_, yVariableFillPattern);
+            Balgo.registerRefine(*bz_id, *bz_id, *bz_id, BfieldNodeRefineOp_, zVariableFillPattern);
+
+            Balgoghost.registerRefine(*bx_id, *bx_id, *bx_id, BfieldNodeRefineOp_,
+                                      xVariableFillPattern);
+            Balgoghost.registerRefine(*by_id, *by_id, *by_id, BfieldNodeRefineOp_,
+                                      yVariableFillPattern);
+            Balgoghost.registerRefine(*bz_id, *bz_id, *bz_id, BfieldNodeRefineOp_,
+                                      zVariableFillPattern);
+
             registerGhostComms_(hybridInfo);
             registerInitComms(hybridInfo);
             registerSyncComms(hybridInfo);
@@ -149,12 +236,15 @@ namespace amr
         {
             auto const level = hierarchy->getPatchLevel(levelNumber);
 
-            magSharedNodesRefiners_.registerLevel(hierarchy, level);
+            magGhostsRefineSchedules.push_back(Balgoghost.createSchedule(
+                level, levelNumber - 1, hierarchy, &magneticPatchRefineStrategy_));
+            // magSharedNodesRefiners_.registerLevel(hierarchy, level);
             elecSharedNodesRefiners_.registerLevel(hierarchy, level);
             currentSharedNodesRefiners_.registerLevel(hierarchy, level);
 
-            magPatchGhostsRefiners_.registerLevel(hierarchy, level);
-            magGhostsRefiners_.registerLevel(hierarchy, level);
+
+            // magPatchGhostsRefiners_.registerLevel(hierarchy, level);
+            // magGhostsRefiners_.registerLevel(hierarchy, level);
             elecGhostsRefiners_.registerLevel(hierarchy, level);
             currentGhostsRefiners_.registerLevel(hierarchy, level);
 
@@ -170,7 +260,9 @@ namespace amr
             if (levelNumber != rootLevelNumber)
             {
                 // those are for refinement
-                magneticInitRefiners_.registerLevel(hierarchy, level);
+                magRefineSchedules.push_back(
+                    Balgo.createSchedule(level, nullptr, levelNumber - 1, hierarchy));
+                // magneticInitRefiners_.registerLevel(hierarchy, level);
                 electricInitRefiners_.registerLevel(hierarchy, level);
                 domainParticlesRefiners_.registerLevel(hierarchy, level);
                 lvlGhostPartOldRefiners_.registerLevel(hierarchy, level);
@@ -200,7 +292,7 @@ namespace amr
 
             bool isRegriddingL0 = levelNumber == 0 and oldLevel;
 
-            magneticInitRefiners_.regrid(hierarchy, levelNumber, oldLevel, initDataTime);
+            // magneticInitRefiners_.regrid(hierarchy, levelNumber, oldLevel, initDataTime);
             electricInitRefiners_.regrid(hierarchy, levelNumber, oldLevel, initDataTime);
             domainParticlesRefiners_.regrid(hierarchy, levelNumber, oldLevel, initDataTime);
             patchGhostPartRefiners_.fill(levelNumber, initDataTime);
@@ -220,7 +312,7 @@ namespace amr
                 auto& B = hybridModel.state.electromag.B;
                 auto& E = hybridModel.state.electromag.E;
                 // magSharedNodesRefiners_.fill(B, levelNumber, initDataTime);
-                magGhostsRefiners_.fill(B, levelNumber, initDataTime);
+                // magGhostsRefiners_.fill(B, levelNumber, initDataTime);
                 // elecSharedNodesRefiners_.fill(E, levelNumber, initDataTime);
                 elecGhostsRefiners_.fill(E, levelNumber, initDataTime);
 
@@ -272,7 +364,9 @@ namespace amr
         {
             auto levelNumber = level.getLevelNumber();
 
-            magneticInitRefiners_.fill(levelNumber, initDataTime);
+            // magRefineSchedules[level.getLevelNumber() - 1]->fillData(initDataTime);
+            magGhostsRefineSchedules[level.getLevelNumber()]->fillData(initDataTime);
+            // magneticInitRefiners_.fill(levelNumber, initDataTime);
             electricInitRefiners_.fill(levelNumber, initDataTime);
 
             // no need to call these :
@@ -590,7 +684,7 @@ namespace amr
 
             PHARE_LOG_LINE_STR("postSynchronize level " + std::to_string(levelNumber))
 
-            magSharedNodesRefiners_.fill(hybridModel.state.electromag.B, levelNumber, time);
+            // magSharedNodesRefiners_.fill(hybridModel.state.electromag.B, levelNumber, time);
             elecSharedNodesRefiners_.fill(hybridModel.state.electromag.E, levelNumber, time);
 
             // we fill magnetic field ghosts only on patch ghost nodes and not on level
@@ -600,7 +694,7 @@ namespace amr
             // level border with next coarser model B would invalidate divB on the first
             // fine domain cell since its border face only received a fraction of the
             // induction that has occured on the shared coarse face.
-            magPatchGhostsRefiners_.fill(hybridModel.state.electromag.B, levelNumber, time);
+            // magPatchGhostsRefiners_.fill(hybridModel.state.electromag.B, levelNumber, time);
             elecGhostsRefiners_.fill(hybridModel.state.electromag.E, levelNumber, time);
             rhoGhostsRefiners_.fill(levelNumber, time);
             velGhostsRefiners_.fill(hybridModel.state.ions.velocity(), levelNumber, time);
@@ -615,11 +709,11 @@ namespace amr
                                std::back_inserter(keys), [](auto const& d) { return d.vecName; });
                 return keys;
             };
-            magSharedNodesRefiners_.addStaticRefiners(info->ghostMagnetic, BfieldNodeRefineOp_,
-                                                      makeKeys(info->ghostMagnetic));
-
-            magGhostsRefiners_.addStaticRefiners(info->ghostMagnetic, BfieldRefineOp_,
-                                                 makeKeys(info->ghostMagnetic));
+            // magSharedNodesRefiners_.addStaticRefiners(info->ghostMagnetic, BfieldNodeRefineOp_,
+            //                                           makeKeys(info->ghostMagnetic));
+            //
+            // magGhostsRefiners_.addStaticRefiners(info->ghostMagnetic, BfieldRefineOp_,
+            //                                      makeKeys(info->ghostMagnetic));
 
             magPatchGhostsRefiners_.addStaticRefiner(info->modelMagnetic, BfieldRefineOp_,
                                                      info->modelMagnetic.vecName);
@@ -660,8 +754,8 @@ namespace amr
                 return keys;
             };
 
-            magneticInitRefiners_.addStaticRefiners(info->initMagnetic, BfieldRefineOp_,
-                                                    makeKeys(info->initMagnetic));
+            // magneticInitRefiners_.addStaticRefiners(info->initMagnetic, BfieldRefineOp_,
+            //                                         makeKeys(info->initMagnetic));
 
             electricInitRefiners_.addStaticRefiners(info->initElectric, EfieldRefineOp_,
                                                     makeKeys(info->initElectric));
@@ -990,6 +1084,10 @@ namespace amr
         SharedNodeRefinerPool magSharedNodesRefiners_{resourcesManager_};
         GhostRefinerPool magGhostsRefiners_{resourcesManager_};
         PatchGhostRefinerPool magPatchGhostsRefiners_{resourcesManager_};
+        SAMRAI::xfer::RefineAlgorithm Balgo;
+        SAMRAI::xfer::RefineAlgorithm Balgoghost;
+        std::vector<std::shared_ptr<SAMRAI::xfer::RefineSchedule>> magRefineSchedules;
+        std::vector<std::shared_ptr<SAMRAI::xfer::RefineSchedule>> magGhostsRefineSchedules;
 
 
         //! store refiners for electric fields that need ghosts to be filled
@@ -1049,6 +1147,10 @@ namespace amr
         using CoarsenOperator_ptr = std::shared_ptr<SAMRAI::hier::CoarsenOperator>;
         CoarsenOperator_ptr fieldCoarseningOp_{std::make_shared<DefaultCoarsenOp>()};
         CoarsenOperator_ptr magneticCoarseningOp_{std::make_shared<MagneticCoarsenOp>()};
+
+        using FieldDataT = FieldData<GridLayoutT, GridT>;
+        MagneticPatchRefineStrategy<rm_t, FieldDataT> magneticPatchRefineStrategy_{
+            *resourcesManager_};
     };
 
 
