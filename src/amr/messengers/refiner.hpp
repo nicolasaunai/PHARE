@@ -76,6 +76,8 @@ public:
                 this->add(algo, algo->createSchedule(level), levelNumber);
             }
 
+            // the following creates a schedule used to += densities and fluxes
+            // on overlaped nodes of the same level
             else if constexpr (Type == RefinerType::PatchFieldBorderSum)
             {
                 this->add(algo,

@@ -16,6 +16,10 @@
 
 namespace PHARE::amr
 {
+// this class only exists to create a type that can be dynamically detected (cast)
+// in copy/stream operations when given an overlap.
+// detecting this type of overlap means we copy leaving particles from patchGhost array
+// into domain array.
 class ParticlesDomainOverlap : public SAMRAI::pdat::CellOverlap
 {
     using Super = SAMRAI::pdat::CellOverlap;
@@ -31,7 +35,16 @@ public:
 };
 
 
-
+/*!
+ * \brief ParticleDomainFromGhostFillPattern creates overlaps used to select particles
+ * that left a patch domain and need to be injected in the domain of a neighbor patch.
+ *
+ * in a VariableFillPattern, calculateOverlap is called by SAMRAI for overlaps not involving
+ * refinement while computeFillBoxesOverlap is called for overlaps involving refinement.
+ *
+ * computeFillBoxesOverlap is thus not implemented since this fill pattern only concern particle
+ * exchange between patches on the same level.
+ */
 template<typename GridLayout_t>
 class ParticleDomainFromGhostFillPattern : public SAMRAI::xfer::VariableFillPattern
 {
@@ -43,6 +56,14 @@ public:
 
     virtual ~ParticleDomainFromGhostFillPattern() {}
 
+    /*!
+     * \brief calculateOverlap creates an overlap that selects particles that left the patch domain
+     *
+     * SAMRAI CellOverlap is the intersection between the source box and destination ghost box.
+     * This cannot select particles that left the source box.
+     * Here we need the "opposite" : select from the source ghost layer intersected with the
+     * destination box.
+     */
     std::shared_ptr<SAMRAI::hier::BoxOverlap>
     calculateOverlap(SAMRAI::hier::BoxGeometry const& dst_geometry,
                      SAMRAI::hier::BoxGeometry const& src_geometry,
@@ -101,7 +122,9 @@ private:
     {
         PHARE_LOG_SCOPE(2, "ParticleDomainFromGhostFillPattern::computeFillBoxesOverlap");
 
-        throw std::runtime_error("no refinement supported or expected");
+        throw std::runtime_error(
+            "the ParticleDomainFromGhostFillPattern is to grab incoming particles from neighbor "
+            "patches on same level, i.e. no refinement");
     }
 };
 
