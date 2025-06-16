@@ -1093,10 +1093,9 @@ namespace amr
         GhostRefinerPool currentGhostsRefiners_{resourcesManager_};
 
         // moment ghosts
-        // these do not need sharedNode refiners. The reason is that
-        // the border node is already complete by the deposit of ghost particles
+        // The border node is already complete by the deposit of ghost particles
         // these refiners are used to fill ghost nodes, and therefore, owing to
-        // the GhostField tag, will only assign pur ghost nodes. Border nodes will
+        // the GhostField tag, will only assign pure ghost nodes. Border nodes will
         // be overwritten only on level borders, which does not seem to be an issue.
         GhostRefinerPool rhoGhostsRefiners_{resourcesManager_};
         GhostRefinerPool velGhostsRefiners_{resourcesManager_};
@@ -1128,9 +1127,7 @@ namespace amr
 
 
         RefOp_ptr fieldRefineOp_{std::make_shared<DefaultFieldRefineOp>()};
-        // see field_variable_fill_pattern.hpp for explanation about this "node_only" flag
-        // note that refinement operator, via the boolean argument, serve as a relay for the
-        // the refinealgorithm to get the correct variablefillpattern
+
         RefOp_ptr BfieldRefineOp_{std::make_shared<MagneticFieldRefineOp>()};
         RefOp_ptr EfieldRefineOp_{std::make_shared<ElectricFieldRefineOp>()};
         std::shared_ptr<FieldFillPattern_t> defaultFieldFillPattern

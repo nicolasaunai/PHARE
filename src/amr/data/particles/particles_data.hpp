@@ -751,7 +751,8 @@ void ParticlesData<ParticleArray_t>::pack_from_ghost(SAMRAI::tbox::MessageStream
     stream.pack(outBuffer.data(), outBuffer.size());
 }
 
-
+// The overlap is not needed here as the pack selects only from the desired overlap
+//  and the transform if applicable is performed during packing
 template<typename ParticleArray_t>
 void ParticlesData<ParticleArray_t>::unpack_from_ghost(SAMRAI::tbox::MessageStream& stream,
                                                        ParticlesDomainOverlap const& /*pOverlap*/)
@@ -763,6 +764,7 @@ void ParticlesData<ParticleArray_t>::unpack_from_ghost(SAMRAI::tbox::MessageStre
     std::vector<Particle_t> particleArray(numberParticles);
     stream.unpack(particleArray.data(), numberParticles);
 
+    domainParticles.reserve(domainParticles.size() + numberParticles);
     for (auto const& p : particleArray)
         domainParticles.push_back(p);
 }
