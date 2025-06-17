@@ -214,20 +214,19 @@ namespace amr
     NO_DISCARD auto makeNonLevelGhostBoxFor(SAMRAI::hier::Patch const& patch,
                                             SAMRAI::hier::PatchHierarchy const& hierarchy)
     {
-        auto constexpr dimension = GridLayoutT::dimension;
-        auto const lvlNbr        = patch.getPatchLevelNumber();
-
+        auto constexpr dimension       = GridLayoutT::dimension;
+        auto const lvlNbr              = patch.getPatchLevelNumber();
         SAMRAI::hier::Box const domain = patch.getBox();
         auto const domBox              = phare_box_from<dimension>(domain);
         auto const particleGhostBox    = grow(domBox, GridLayoutT::nbrParticleGhosts());
-        auto particleGhostBoxMinusLevelGhostsCells{domBox};
-
+#
         SAMRAI::hier::HierarchyNeighbors const hier_nbrs{hierarchy, lvlNbr, lvlNbr};
+        std::vector<core::Box<int, GridLayoutT::dimension>> patchGhostLayerBoxes{domBox};
         for (auto const& neighbox : hier_nbrs.getSameLevelNeighbors(domain, lvlNbr))
-            particleGhostBoxMinusLevelGhostsCells = particleGhostBoxMinusLevelGhostsCells.merge(
+            patchGhostLayerBoxes.emplace_back(
                 *(particleGhostBox * phare_box_from<dimension>(neighbox)));
 
-        return particleGhostBoxMinusLevelGhostsCells;
+        return patchGhostLayerBoxes;
     }
 
     inline auto to_string(auto const& id)

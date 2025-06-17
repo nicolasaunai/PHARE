@@ -364,7 +364,7 @@ struct IonUpdaterTest : public ::testing::Test
     std::array<int, dim> ncells;
     GridLayout layout;
     // assumes no level ghost cells
-    Boxing_t const boxing{layout, grow(layout.AMRBox(), GridLayout::nbrParticleGhosts())};
+    Boxing_t const boxing{layout, {grow(layout.AMRBox(), GridLayout::nbrParticleGhosts())}};
 
 
     // data for electromagnetic fields

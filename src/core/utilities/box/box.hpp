@@ -146,9 +146,6 @@ struct Box
         else
             return 6;
     }
-
-
-    Box merge(Box const& that) const;
 };
 
 template<typename Type, std::size_t dim>
@@ -298,19 +295,6 @@ auto& operator<<(std::ostream& os, Box<Type, dim> const& box)
         os << c << " ";
     os << ")";
     return os;
-}
-
-
-template<typename Type, std::size_t dim>
-Box<Type, dim> Box<Type, dim>::merge(Box<Type, dim> const& to_merge) const
-{
-    Box<Type, dim> merged{*this};
-    for (std::size_t i = 0; i < dim; ++i)
-    {
-        merged.lower[i] = std::min(merged.lower[i], to_merge.lower[i]);
-        merged.upper[i] = std::max(merged.upper[i], to_merge.upper[i]);
-    }
-    return merged;
 }
 
 

@@ -125,7 +125,7 @@ struct UpdaterSelectionBoxing
     using Selector_t                     = IonUpdater_t::Pusher::ParticleSelector;
 
     GridLayout_t const layout;
-    Box_t const nonLevelGhostBox;
+    std::vector<Box_t> const nonLevelGhostBox;
     Box_t const domainBox = layout.AMRBox();
     Box_t const ghostBox  = grow(domainBox, partGhostWidth);
 
@@ -144,8 +144,9 @@ struct UpdaterSelectionBoxing
 
     Selector_t const inNonLevelGhostBox
         = [nonLevelGhostBox = nonLevelGhostBox](auto& particleRange) {
-              return particleRange.array().partition(
-                  particleRange, [&](auto const& cell) { return isIn(cell, nonLevelGhostBox); });
+              return particleRange.array().partition(particleRange, [&](auto const& cell) {
+                  return isIn(Point{cell}, nonLevelGhostBox);
+              });
           };
 
     Selector_t const inGhostLayer
