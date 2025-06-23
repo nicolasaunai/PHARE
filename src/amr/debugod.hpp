@@ -3,11 +3,13 @@
 
 #include "core/def.hpp"
 #include "core/utilities/box/box.hpp"
+#include "core/utilities/constants.hpp"
 #include "core/utilities/point/point.hpp"
 #include "core/utilities/mpi_utils.hpp"
 #include "amr/wrappers/hierarchy.hpp"
 #include "amr/data/field/field_data.hpp"
 #include "amr/resources_manager/amr_utils.hpp"
+#include "core/utilities/types.hpp"
 
 #include <SAMRAI/hier/PatchHierarchy.h>
 
@@ -16,6 +18,7 @@
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
+#include <source_location>
 
 namespace PHARE::amr
 {
@@ -36,18 +39,18 @@ public:
     struct GodValue
     {
         Point_t coords;
-        std::array<int, dimension> loc_index;
+        std::array<std::uint32_t, dimension> loc_index;
         std::array<int, dimension> amr_index;
         double value;
         int rank;
         std::string patchID;
+        std::string name;
+        int level;
+        std::source_location src_loc;
 
         // Add other necessary fields and methods as needed
     };
     using GodExtract = std::unordered_map<std::uint32_t, std::vector<GodValue>>;
-
-    NO_DISCARD static DEBUGOD& INSTANCE();
-
 
     void setHierarchy(std::shared_ptr<SAMRAI::hier::PatchHierarchy> const& hier)
     {
@@ -63,10 +66,12 @@ public:
         // this limits to looking at times at coarser time steps for now
         auto patch = *(hierarchy_->getPatchLevel(0)->begin());
         auto pdata = getPatchData(*patch, name);
-        return time == pdata->getTime();
+        return core::float_equals(time, pdata->getTime());
     }
 
-    NO_DISCARD auto inspect(std::string name, Point_t const& lower, Point_t const& upper) const
+    NO_DISCARD auto inspect(std::string name, Point_t const& lower, Point_t const& upper,
+                            std::source_location const location
+                            = std::source_location::current()) const
     {
         GodExtract god_values;
         for (auto ilvl = 0u; ilvl < hierarchy_->getNumberOfLevels(); ++ilvl)
@@ -77,29 +82,64 @@ public:
             for (auto& patch : *level)
             {
                 if (!is_local(*patch))
-                    continue;
-
-                auto extract_box = PHARE::core::Box<double, dimension>{lower, upper};
-                auto patch_ghost_box
-                    = phare_box_from<dimension, double>(getPatchData(*patch, name)->getGhostBox());
-
-                auto& field    = getField(*patch, name);
-                auto layout    = layoutFromPatch<GridLayout_t>(*patch);
-                auto centering = GridLayout_t::centering(field.physicalQuantity());
-
-                for (auto i = 0u; i < dimension; ++i)
                 {
-                    if (centering[i] == PHARE::core::QtyCentering::primal)
-                    {
-                        extract_box.upper[i] += 1;
-                    }
+                    continue;
                 }
 
-                auto intersected_box = patch_ghost_box * extract_box;
+                auto& field      = getField(*patch, name);
+                auto layout      = layoutFromPatch<GridLayout_t>(*patch);
+                auto extract_box = PHARE::core::Box<double, dimension>{lower, upper};
+                auto patch_ghost_box
+                    = phare_box_from<dimension, int>(getPatchData(*patch, name)->getGhostBox());
+
+                auto centering = GridLayout_t::centering(field.physicalQuantity());
+
+
+                Box<int, dimension> amr_user_box;
+                for (auto i = 0u; i < dimension; ++i)
+                {
+                    amr_user_box.lower[i]
+                        = static_cast<int>((extract_box.lower[i]) / layout.meshSize()[i]);
+                    amr_user_box.upper[i]
+                        = static_cast<int>((extract_box.upper[i]) / layout.meshSize()[i]);
+                }
+
+                // for (auto i = 0u; i < dimension; ++i)
+                // {
+                //     if (centering[i] == PHARE::core::QtyCentering::primal)
+                //     {
+                //         extract_box.upper[i] += 1;
+                //     }
+                // }
+
+                // patch_ghost_box.lower[core::dirX]
+                //     = patch_ghost_box.lower[core::dirX] * layout.meshSize()[core::dirX];
+                // patch_ghost_box.lower[core::dirY]
+                //     = patch_ghost_box.lower[core::dirY] * layout.meshSize()[core::dirY];
+                // patch_ghost_box.lower[core::dirZ]
+                //     = patch_ghost_box.lower[core::dirZ] * layout.meshSize()[core::dirZ];
+                //
+                // patch_ghost_box.upper[core::dirX]
+                //     = patch_ghost_box.upper[core::dirX] * layout.meshSize()[core::dirX];
+                // patch_ghost_box.upper[core::dirY]
+                //     = patch_ghost_box.upper[core::dirY] * layout.meshSize()[core::dirY];
+                // patch_ghost_box.upper[core::dirZ]
+                //     = patch_ghost_box.upper[core::dirZ] * layout.meshSize()[core::dirZ];
+
+
+
+                auto intersected_box = patch_ghost_box * amr_user_box;
 
                 if (!intersected_box)
+                {
+                    // std::cout << "boxes :\n"
+                    //           << "patch_ghost_box: " << patch_ghost_box << "\n"
+                    //           << "amr_user_box: " << amr_user_box << "\n"
+                    //           << "intersected_box: " << *intersected_box << "\n";
                     continue;
+                }
 
+                auto local_box = layout.AMRToLocal(*intersected_box);
 
 
                 // loop on nodes
@@ -111,7 +151,6 @@ public:
                 // with the FieldBox object maybe....
 
                 GodValue gval;
-                auto box = *intersected_box;
 
                 if constexpr (dimension == 1)
                 {
@@ -120,22 +159,43 @@ public:
 
                 else if constexpr (dimension == 2)
                 {
-                    auto& dl     = layout.meshSize();
-                    auto ixStart = static_cast<int>((box.lower[0] - layout.origin()[0]) / dl[0]);
-                    auto ixEnd   = static_cast<int>((box.upper[0] - layout.origin()[0]) / dl[0]);
-                    auto iyStart = static_cast<int>((box.lower[1] - layout.origin()[1]) / dl[1]);
-                    auto iyEnd   = static_cast<int>((box.upper[1] - layout.origin()[1]) / dl[1]);
+                    auto ixStart = local_box.lower[core::dirX];
+                    auto ixEnd   = local_box.upper[core::dirX];
+                    auto iyStart = local_box.lower[core::dirY];
+                    auto iyEnd   = local_box.upper[core::dirY];
+                    // std::cout << "ixStart: " << ixStart << " ixEnd: " << ixEnd
+                    //           << " iyStart: " << iyStart << " iyEnd: " << iyEnd << "\n";
+                    // std::cout << "amr_user_box: " << amr_user_box
+                    //           << " intersected_box: " << *intersected_box
+                    //           << " local_box: " << local_box << "\n";
 
                     for (auto ix = ixStart; ix <= ixEnd; ++ix)
                     {
                         for (auto iy = iyStart; iy <= iyEnd; ++iy)
                         {
-                            gval.coords
-                                = layout.fieldNodeCoordinates(field, layout.origin(), ix, iy);
+                            gval.coords = {
+                                layout.meshSize()[0]
+                                    * (ix + patch_ghost_box.lower[core::dirX]
+                                       + (centering[core::dirX] == PHARE::core::QtyCentering::dual
+                                              ? 0.5
+                                              : 0)),
+                                layout.meshSize()[1]
+                                    * (iy + patch_ghost_box.lower[core::dirY]
+                                       + (centering[core::dirY] == PHARE::core::QtyCentering::dual
+                                              ? 0.5
+                                              : 0))};
                             gval.value     = field(ix, iy);
                             gval.patchID   = to_string(patch->getGlobalId());
                             gval.rank      = get_rank(*patch);
                             gval.loc_index = {ix, iy};
+                            gval.name      = name;
+                            gval.level     = ilvl;
+                            gval.src_loc   = location;
+                            // std::cout << "adding value: " << gval.value
+                            //           << " at coords: " << gval.coords.str() << " on patch "
+                            //           << gval.patchID << " at rank: " << gval.rank << "\n";
+
+                            god_values[ilvl].push_back(gval);
                         }
                     }
                 }
@@ -145,7 +205,6 @@ public:
                     // {
                     // }
                 }
-                god_values[ilvl].push_back(gval);
             }
         }
 
@@ -162,22 +221,34 @@ public:
 
     void print(GodExtract const& god_values)
     {
+        constexpr auto max_precision{std::numeric_limits<double>::digits10 + 1};
         for (auto& [ilvl, values] : god_values)
         {
-            std::cout << "Level " << ilvl << ":\n";
+            std::cout << "Level " << ilvl << " with nbr values: " << values.size() << "\n";
             for (auto& v : values)
             {
                 auto& coords  = v.coords;
                 auto& loc_idx = v.loc_index;
-                auto& amr_idx = v.loc_index;
+                // auto& amr_idx = v.amr_index;
                 auto& rank    = v.rank;
                 auto& patchID = v.patchID;
-
+                auto& name    = v.name;
+                std::cout << name << " at " << coords.str();
+                std::cout << std::setprecision(max_precision);
+                std::cout << " = " << v.value << " on L" << v.level;
+                std::cout << " Rank: " << rank;
+                std::cout << " PatchID: " << patchID;
+                std::cout << " at " << v.src_loc.file_name() << ":" << v.src_loc.line();
                 std::cout << "\n";
             }
         }
     }
 
+    static DEBUGOD<PHARE_TYPES>& INSTANCE()
+    {
+        static DEBUGOD instance;
+        return instance;
+    }
 
     // void stop() { god_.release(); }
 
@@ -214,8 +285,6 @@ private:
         auto const& fielddata = std::dynamic_pointer_cast<FieldData_t>(pdata);
         return fielddata->field;
     }
-
-
 
     DEBUGOD() {}
     std::shared_ptr<SAMRAI::hier::PatchHierarchy> hierarchy_;
