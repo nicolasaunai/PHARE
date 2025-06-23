@@ -18,6 +18,9 @@
 #include "amr/solvers/solver.hpp"
 #include "amr/solvers/solver_ppc_model_view.hpp"
 
+#include "amr/debugod.hpp"
+#include "phare_core.hpp"
+
 #include <SAMRAI/hier/Patch.h>
 
 #include <unordered_map>
@@ -246,9 +249,30 @@ void SolverPPC<HybridModel, AMR_Types>::advanceLevel(hierarchy_t const& hierarch
 
     predictor2_(level, modelView, fromCoarser, currentTime, newTime);
 
+    {
+        auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
+        if (god.isActive())
+        {
+            if (god.time_is("EMPred_B_x", 0.225))
+            {
+                auto bx_dbg_rge = god.inspect("EMPred_B_x", {12.9, 8.05}, {12.9, 8.35});
+                god.print(bx_dbg_rge);
+            }
+        }
+    }
 
     average_(level, modelView, fromCoarser, newTime);
-
+    {
+        auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
+        if (god.isActive())
+        {
+            if (god.time_is("EMAvg_E_z", 0.225))
+            {
+                auto ez_dbg_rge = god.inspect("EMAvg_E_z", {12.9, 8.05}, {12.9, 8.42});
+                god.print(ez_dbg_rge);
+            }
+        }
+    }
     moveIons_(level, modelView, fromCoarser, currentTime, newTime, core::UpdaterMode::all);
 
     corrector_(level, modelView, fromCoarser, currentTime, newTime);

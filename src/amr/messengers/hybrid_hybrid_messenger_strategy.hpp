@@ -697,7 +697,7 @@ namespace amr
                 if (god.time_is("EM_B_x", 0.225))
                 {
                     auto bx_dbg_rge = god.inspect("EM_B_x", {12.9, 8.05}, {12.9, 8.35});
-                    auto ez_dbg_rge = god.inspect("EMAvg_E_x", {12.9, 8.05}, {12.9, 8.42});
+                    auto ez_dbg_rge = god.inspect("EMAvg_E_z", {12.9, 8.05}, {12.9, 8.42});
                     god.print(bx_dbg_rge);
                     god.print(ez_dbg_rge);
                 }
