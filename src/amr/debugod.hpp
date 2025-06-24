@@ -187,6 +187,8 @@ public:
                             gval.src_loc   = location;
                             gval.time      = getTime(name, *patch);
                             gval.msg       = msg;
+                            gval.amr_index
+                                = {amr_user_box.lower[core::dirX], amr_user_box.lower[core::dirY]};
                             // std::cout << "adding value: " << gval.value
                             //           << " at coords: " << gval.coords.str() << " on patch "
                             //           << gval.patchID << " at rank: " << gval.rank << "\n";
@@ -237,6 +239,8 @@ public:
                 std::cout << " at " << std::filesystem::path(v.src_loc.file_name()).filename()
                           << ":" << v.src_loc.line();
                 std::cout << " at time: " << v.time;
+                std::cout << " at loc_index: (" << loc_idx[0] << ", " << loc_idx[1] << ")";
+                std::cout << " at amr index: ( " << v.amr_index[0] << ", " << v.amr_index[1] << ")";
                 std::cout << " " << v.msg;
                 std::cout << "\n";
             }

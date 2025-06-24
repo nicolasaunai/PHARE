@@ -253,6 +253,7 @@ void SolverPPC<HybridModel, AMR_Types>::advanceLevel(hierarchy_t const& hierarch
             if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
                 or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
             {
+                std::cout << "NEW TIME: " << newTime << std::endl;
                 auto ez_dbg_rge = god.inspect("EMAvg_E_z", {12.9, 8.05}, {12.9, 8.42},
                                               std::source_location::current(), "avg1");
                 god.print(ez_dbg_rge);
@@ -274,6 +275,7 @@ void SolverPPC<HybridModel, AMR_Types>::advanceLevel(hierarchy_t const& hierarch
             if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
                 or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
             {
+                std::cout << "NEW TIME: " << newTime << std::endl;
                 auto ez_dbg_rge = god.inspect("EMAvg_E_z", {12.9, 8.05}, {12.9, 8.42},
                                               std::source_location::current(), "avg2");
                 god.print(ez_dbg_rge);
@@ -306,8 +308,11 @@ void SolverPPC<HybridModel, AMR_Types>::predictor1_(level_t& level, ModelViews_t
     auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
     if (god.isActive())
     {
-        if (god.time_is("EMPred_B_x", 0.225))
+        // if (god.time_is("EMPred_B_x", 0.22125))
+        if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
+            or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
         {
+            std::cout << "NEW TIME: " << newTime << std::endl;
             auto bx_dbg_rge = god.inspect("EMPred_B_x", {12.9, 8.05}, {12.9, 8.35},
                                           std::source_location::current(), "pred1");
             god.print(bx_dbg_rge);
@@ -323,8 +328,11 @@ void SolverPPC<HybridModel, AMR_Types>::predictor1_(level_t& level, ModelViews_t
 
     if (god.isActive())
     {
-        if (god.time_is("J_z", 0.225))
+        // if (god.time_is("J_z", 0.225))
+        if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
+            or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
         {
+            std::cout << "NEW TIME: " << newTime << std::endl;
             auto jz = god.inspect("J_z", {12.9, 8.05}, {12.9, 8.35},
                                   std::source_location::current(), "pred2");
             auto jx = god.inspect("J_x", {12.5, 8.1}, {13., 8.1}, std::source_location::current(),
@@ -345,6 +353,7 @@ void SolverPPC<HybridModel, AMR_Types>::predictor1_(level_t& level, ModelViews_t
                 or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
             {
                 PHARE_LOG_SCOPE(1, "SolverPPC::predictor2_.debug");
+                std::cout << "NEW TIME: " << newTime << std::endl;
                 // This is a debug point to check the average electric field
                 // at a specific time and location.
                 {
@@ -375,8 +384,10 @@ void SolverPPC<HybridModel, AMR_Types>::predictor1_(level_t& level, ModelViews_t
             auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
             if (god.isActive())
             {
-                if (god.time_is("EMPred_E_z", 0.225))
+                if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
+                    or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
                 {
+                    std::cout << "NEW TIME: " << newTime << std::endl;
                     auto bx_dbg_rge = god.inspect("EMPred_E_z", {12.9, 8.05}, {12.9, 8.35},
                                                   std::source_location::current(), "pred1");
                     god.print(bx_dbg_rge);
@@ -408,8 +419,11 @@ void SolverPPC<HybridModel, AMR_Types>::predictor2_(level_t& level, ModelViews_t
         auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
         if (god.isActive())
         {
-            if (god.time_is("EMPred_B_x", 0.225))
+            // if (god.time_is("EMPred_B_x", 0.225))
+            if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
+                or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
             {
+                std::cout << "NEW TIME: " << newTime << std::endl;
                 auto bx_dbg_rge = god.inspect("EMPred_B_x", {12.9, 8.05}, {12.9, 8.35},
                                               std::source_location::current(), "pred2");
                 god.print(bx_dbg_rge);
@@ -426,8 +440,11 @@ void SolverPPC<HybridModel, AMR_Types>::predictor2_(level_t& level, ModelViews_t
         auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
         if (god.isActive())
         {
-            if (god.time_is("J_z", 0.225))
+            // if (god.time_is("J_z", 0.225))
+            if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
+                or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
             {
+                std::cout << "NEW TIME: " << newTime << std::endl;
                 auto jz = god.inspect("J_z", {12.9, 8.05}, {12.9, 8.35},
                                       std::source_location::current(), "pred2");
                 auto jx = god.inspect("J_x", {12.5, 8.1}, {13., 8.1},
@@ -445,9 +462,13 @@ void SolverPPC<HybridModel, AMR_Types>::predictor2_(level_t& level, ModelViews_t
         if (god.isActive())
         {
             // if (god.time_is("EMAvg_E_z", 0.224375))
+            // if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
+            //     or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
             if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
                 or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
             {
+                std::cout << "NEW TIME: " << newTime << std::endl;
+
                 PHARE_LOG_SCOPE(1, "SolverPPC::predictor2_.debug");
                 // This is a debug point to check the average electric field
                 // at a specific time and location.
@@ -479,8 +500,11 @@ void SolverPPC<HybridModel, AMR_Types>::predictor2_(level_t& level, ModelViews_t
             auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
             if (god.isActive())
             {
-                if (god.time_is("EMPred_E_z", 0.225))
+                // if (god.time_is("EMPred_E_z", 0.225))
+                if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
+                    or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
                 {
+                    std::cout << "NEW TIME: " << newTime << std::endl;
                     auto bx_dbg_rge = god.inspect("EMPred_E_z", {12.9, 8.05}, {12.9, 8.35},
                                                   std::source_location::current(), "pred2");
                     god.print(bx_dbg_rge);
