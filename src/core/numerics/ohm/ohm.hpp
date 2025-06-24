@@ -135,6 +135,7 @@ private:
             auto const bxOnEz          = GridLayout::project(Bx, index, GridLayout::BxToEz());
             auto const byOnEz          = GridLayout::project(By, index, GridLayout::ByToEz());
 
+
             return -vxOnEz * byOnEz + vyOnEz * bxOnEz;
         }
     }
@@ -188,6 +189,23 @@ private:
             auto const vyOnEz          = GridLayout::project(Vy, index, momentsToEz);
             auto const bxOnEz          = GridLayout::project(Bx, index, GridLayout::BxToEz());
             auto const byOnEz          = GridLayout::project(By, index, GridLayout::ByToEz());
+
+            if (layout_->AMRBox() == core::Box<int, dimension>{{64, 36}, {71, 45}})
+            {
+                if (index[0] == 2 && index[1] == 6)
+                {
+                    std::cout << "PATCH #18: vxOnEz: " << vxOnEz << ", vyOnEz: " << vyOnEz
+                              << ", bxOnEz: " << bxOnEz << ", byOnEz: " << byOnEz << std::endl;
+                }
+            }
+            if (layout_->AMRBox() == core::Box<int, dimension>{{54, 36}, {63, 45}})
+            {
+                if (index[0] == 12 && index[1] == 6)
+                {
+                    std::cout << "PATCH #16: vxOnEz: " << vxOnEz << ", vyOnEz: " << vyOnEz
+                              << ", bxOnEz: " << bxOnEz << ", byOnEz: " << byOnEz << std::endl;
+                }
+            }
 
             return -vxOnEz * byOnEz + vyOnEz * bxOnEz;
         }

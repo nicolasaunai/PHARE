@@ -727,6 +727,20 @@ namespace core
                 auto lapY = inverseMeshSize_[dirY] * inverseMeshSize_[dirY]
                             * (nextY - 2.0 * hereY + prevY);
 
+                if (this->AMRBox() == core::Box<int, dimension>{{64, 36}, {71, 45}})
+                {
+                    if (index[0] == 2 && index[1] == 6)
+                    {
+                        std::cout << "PATCH #18 lapX: " << lapX << ", lapY: " << lapY << std::endl;
+                    }
+                }
+                if (this->AMRBox() == core::Box<int, dimension>{{54, 36}, {63, 45}})
+                {
+                    if (index[0] == 12 && index[1] == 6)
+                    {
+                        std::cout << "PATCH #16 lapX: " << lapX << ", lapY: " << lapY << std::endl;
+                    }
+                }
                 return lapX + lapY;
             }
             else if constexpr (Field::dimension == 3)
