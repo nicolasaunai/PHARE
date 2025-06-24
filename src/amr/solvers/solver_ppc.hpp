@@ -326,7 +326,13 @@ void SolverPPC<HybridModel, AMR_Types>::predictor1_(level_t& level, ModelViews_t
         if (god.time_is("J_z", 0.225))
         {
             auto jz = god.inspect("J_z", {12.9, 8.05}, {12.9, 8.35},
-                                  std::source_location::current(), "pred1");
+                                  std::source_location::current(), "pred2");
+            auto jx = god.inspect("J_x", {12.5, 8.1}, {13., 8.1}, std::source_location::current(),
+                                  "pred2");
+            auto jy = god.inspect("J_y", {12.81, 7.95}, {12.81, 8.15},
+                                  std::source_location::current(), "pred2");
+            god.print(jx);
+            god.print(jy);
             god.print(jz);
         }
     }
@@ -424,6 +430,12 @@ void SolverPPC<HybridModel, AMR_Types>::predictor2_(level_t& level, ModelViews_t
             {
                 auto jz = god.inspect("J_z", {12.9, 8.05}, {12.9, 8.35},
                                       std::source_location::current(), "pred2");
+                auto jx = god.inspect("J_x", {12.5, 8.1}, {13., 8.1},
+                                      std::source_location::current(), "pred2");
+                auto jy = god.inspect("J_y", {12.81, 7.95}, {12.81, 8.15},
+                                      std::source_location::current(), "pred2");
+                god.print(jx);
+                god.print(jy);
                 god.print(jz);
             }
         }
