@@ -731,14 +731,20 @@ namespace core
                 {
                     if (index[0] == 2 && index[1] == 6)
                     {
-                        std::cout << "PATCH #18 lapX: " << lapX << ", lapY: " << lapY << std::endl;
+                        std::cout << "PATCH #18 lapX: " << lapX << ", lapY: " << lapY
+                                  << " operand name " << operand.name() << std::endl;
+                        std::cout << "PATCH #18 nextY: " << nextY << ", prevY: " << prevY
+                                  << ", hereY: " << hereY << ", nextY: " << nextY << "\n";
                     }
                 }
                 if (this->AMRBox() == core::Box<int, dimension>{{54, 36}, {63, 45}})
                 {
                     if (index[0] == 12 && index[1] == 6)
                     {
-                        std::cout << "PATCH #16 lapX: " << lapX << ", lapY: " << lapY << std::endl;
+                        std::cout << "PATCH #16 lapX: " << lapX << ", lapY: " << lapY
+                                  << " operand name " << operand.name() << std::endl;
+                        std::cout << "PATCH #16 nextY: " << nextY << ", prevY: " << prevY
+                                  << ", hereY: " << hereY << ", nextY: " << nextY << "\n";
                     }
                 }
                 return lapX + lapY;
