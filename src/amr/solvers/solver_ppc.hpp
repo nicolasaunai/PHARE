@@ -24,6 +24,7 @@
 #include <SAMRAI/hier/Patch.h>
 
 #include <unordered_map>
+#include <source_location>
 
 
 namespace PHARE::solver
@@ -244,22 +245,25 @@ void SolverPPC<HybridModel, AMR_Types>::advanceLevel(hierarchy_t const& hierarch
     predictor1_(level, modelView, fromCoarser, currentTime, newTime);
 
     average_(level, modelView, fromCoarser, newTime);
+    {
+        auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
+        if (god.isActive())
+        {
+            // if (god.time_is("EMAvg_E_z", 0.224375))
+            if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
+                or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
+            {
+                auto ez_dbg_rge = god.inspect("EMAvg_E_z", {12.9, 8.05}, {12.9, 8.42},
+                                              std::source_location::current(), "avg1");
+                god.print(ez_dbg_rge);
+            }
+        }
+    }
 
     moveIons_(level, modelView, fromCoarser, currentTime, newTime, core::UpdaterMode::domain_only);
 
     predictor2_(level, modelView, fromCoarser, currentTime, newTime);
 
-    {
-        auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
-        if (god.isActive())
-        {
-            if (god.time_is("EMPred_B_x", 0.225))
-            {
-                auto bx_dbg_rge = god.inspect("EMPred_B_x", {12.9, 8.05}, {12.9, 8.35});
-                god.print(bx_dbg_rge);
-            }
-        }
-    }
 
     average_(level, modelView, fromCoarser, newTime);
     {
@@ -267,8 +271,11 @@ void SolverPPC<HybridModel, AMR_Types>::advanceLevel(hierarchy_t const& hierarch
         if (god.isActive())
         {
             // if (god.time_is("EMAvg_E_z", 0.224375))
+            if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
+                or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
             {
-                auto ez_dbg_rge = god.inspect("EMAvg_E_z", {12.9, 8.05}, {12.9, 8.42});
+                auto ez_dbg_rge = god.inspect("EMAvg_E_z", {12.9, 8.05}, {12.9, 8.42},
+                                              std::source_location::current(), "avg2");
                 god.print(ez_dbg_rge);
             }
         }
@@ -296,6 +303,16 @@ void SolverPPC<HybridModel, AMR_Types>::predictor1_(level_t& level, ModelViews_t
         faraday_(views.layouts, views.electromag_B, views.electromag_E, views.electromagPred_B, dt);
         setTime([](auto& state) -> auto& { return state.electromagPred.B; });
     }
+    auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
+    if (god.isActive())
+    {
+        if (god.time_is("EMPred_B_x", 0.225))
+        {
+            auto bx_dbg_rge = god.inspect("EMPred_B_x", {12.9, 8.05}, {12.9, 8.35},
+                                          std::source_location::current(), "pred1");
+            god.print(bx_dbg_rge);
+        }
+    }
 
     {
         PHARE_LOG_SCOPE(1, "SolverPPC::predictor1_.ampere");
@@ -304,6 +321,43 @@ void SolverPPC<HybridModel, AMR_Types>::predictor1_(level_t& level, ModelViews_t
         fromCoarser.fillCurrentGhosts(views.model().state.J, level.getLevelNumber(), newTime);
     }
 
+    if (god.isActive())
+    {
+        if (god.time_is("J_z", 0.225))
+        {
+            auto jz = god.inspect("J_z", {12.9, 8.05}, {12.9, 8.35},
+                                  std::source_location::current(), "pred1");
+            god.print(jz);
+        }
+    }
+    {
+        auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
+        if (god.isActive())
+        {
+            // if (god.time_is("EMAvg_E_z", 0.224375))
+            if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
+                or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
+            {
+                PHARE_LOG_SCOPE(1, "SolverPPC::predictor2_.debug");
+                // This is a debug point to check the average electric field
+                // at a specific time and location.
+                {
+                    auto godvals    = god.inspect("rho", {12.9, 8.05}, {12.9, 8.42},
+                                                  std::source_location::current(), "pred1");
+                    auto godvals_vx = god.inspect("bulkVel_x", {12.9, 8.05}, {12.9, 8.42},
+                                                  std::source_location::current(), "pred1");
+                    auto godvals_vy = god.inspect("bulkVel_y", {12.9, 8.05}, {12.9, 8.42},
+                                                  std::source_location::current(), "pred1");
+                    auto godvals_vz = god.inspect("bulkVel_z", {12.9, 8.05}, {12.9, 8.42},
+                                                  std::source_location::current(), "pred1");
+                    god.print(godvals);
+                    god.print(godvals_vx);
+                    god.print(godvals_vy);
+                    god.print(godvals_vz);
+                }
+            }
+        }
+    }
     {
         PHARE_LOG_SCOPE(1, "SolverPPC::predictor1_.ohm");
         for (auto& state : views)
@@ -311,6 +365,18 @@ void SolverPPC<HybridModel, AMR_Types>::predictor1_(level_t& level, ModelViews_t
         ohm_(views.layouts, views.N, views.Ve, views.Pe, views.electromagPred_B, views.J,
              views.electromagPred_E);
         setTime([](auto& state) -> auto& { return state.electromagPred.E; });
+        {
+            auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
+            if (god.isActive())
+            {
+                if (god.time_is("EMPred_E_z", 0.225))
+                {
+                    auto bx_dbg_rge = god.inspect("EMPred_E_z", {12.9, 8.05}, {12.9, 8.35},
+                                                  std::source_location::current(), "pred1");
+                    god.print(bx_dbg_rge);
+                }
+            }
+        }
     }
 }
 
@@ -333,20 +399,60 @@ void SolverPPC<HybridModel, AMR_Types>::predictor2_(level_t& level, ModelViews_t
     }
 
     {
+        auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
+        if (god.isActive())
+        {
+            if (god.time_is("EMPred_B_x", 0.225))
+            {
+                auto bx_dbg_rge = god.inspect("EMPred_B_x", {12.9, 8.05}, {12.9, 8.35},
+                                              std::source_location::current(), "pred2");
+                god.print(bx_dbg_rge);
+            }
+        }
+    }
+    {
         PHARE_LOG_SCOPE(1, "SolverPPC::predictor2_.ampere");
         ampere_(views.layouts, views.electromagPred_B, views.J);
         setTime([](auto& state) -> auto& { return state.J; });
         fromCoarser.fillCurrentGhosts(views.model().state.J, level.getLevelNumber(), newTime);
     }
-
+    {
+        auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
+        if (god.isActive())
+        {
+            if (god.time_is("J_z", 0.225))
+            {
+                auto jz = god.inspect("J_z", {12.9, 8.05}, {12.9, 8.35},
+                                      std::source_location::current(), "pred2");
+                god.print(jz);
+            }
+        }
+    }
     {
         auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
         if (god.isActive())
         {
             // if (god.time_is("EMAvg_E_z", 0.224375))
+            if (core::float_equals(newTime, 0.225) or core::float_equals(newTime, 0.22125)
+                or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
             {
-                auto godvals = god.inspect("rho", {12.9, 8.05}, {12.9, 8.42});
-                god.print(godvals);
+                PHARE_LOG_SCOPE(1, "SolverPPC::predictor2_.debug");
+                // This is a debug point to check the average electric field
+                // at a specific time and location.
+                {
+                    auto godvals    = god.inspect("rho", {12.9, 8.05}, {12.9, 8.42},
+                                                  std::source_location::current(), "pred2");
+                    auto godvals_vx = god.inspect("bulkVel_x", {12.9, 8.05}, {12.9, 8.42},
+                                                  std::source_location::current(), "pred2");
+                    auto godvals_vy = god.inspect("bulkVel_y", {12.9, 8.05}, {12.9, 8.42},
+                                                  std::source_location::current(), "pred2");
+                    auto godvals_vz = god.inspect("bulkVel_z", {12.9, 8.05}, {12.9, 8.42},
+                                                  std::source_location::current(), "pred2");
+                    god.print(godvals);
+                    god.print(godvals_vx);
+                    god.print(godvals_vy);
+                    god.print(godvals_vz);
+                }
             }
         }
     }
@@ -357,6 +463,18 @@ void SolverPPC<HybridModel, AMR_Types>::predictor2_(level_t& level, ModelViews_t
         ohm_(views.layouts, views.N, views.Ve, views.Pe, views.electromagPred_B, views.J,
              views.electromagPred_E);
         setTime([](auto& state) -> auto& { return state.electromagPred.E; });
+        {
+            auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
+            if (god.isActive())
+            {
+                if (god.time_is("EMPred_E_z", 0.225))
+                {
+                    auto bx_dbg_rge = god.inspect("EMPred_E_z", {12.9, 8.05}, {12.9, 8.35},
+                                                  std::source_location::current(), "pred2");
+                    god.print(bx_dbg_rge);
+                }
+            }
+        }
     }
 }
 

@@ -49,6 +49,7 @@ public:
         int level;
         std::source_location src_loc;
         double time;
+        std::string msg;
 
         // Add other necessary fields and methods as needed
     };
@@ -86,8 +87,8 @@ public:
     }
 
     NO_DISCARD auto inspect(std::string name, Point_t const& lower, Point_t const& upper,
-                            std::source_location const location
-                            = std::source_location::current()) const
+                            std::source_location const location = std::source_location::current(),
+                            std::string msg                     = "") const
     {
         GodExtract god_values;
         for (auto ilvl = 0u; ilvl < hierarchy_->getNumberOfLevels(); ++ilvl)
@@ -185,6 +186,7 @@ public:
                             gval.level     = ilvl;
                             gval.src_loc   = location;
                             gval.time      = getTime(name, *patch);
+                            gval.msg       = msg;
                             // std::cout << "adding value: " << gval.value
                             //           << " at coords: " << gval.coords.str() << " on patch "
                             //           << gval.patchID << " at rank: " << gval.rank << "\n";
@@ -234,6 +236,8 @@ public:
                 std::cout << " PatchID: " << patchID;
                 std::cout << " at " << std::filesystem::path(v.src_loc.file_name()).filename()
                           << ":" << v.src_loc.line();
+                std::cout << " at time: " << v.time;
+                std::cout << " " << v.msg;
                 std::cout << "\n";
             }
         }
