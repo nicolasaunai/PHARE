@@ -266,7 +266,7 @@ void SolverPPC<HybridModel, AMR_Types>::advanceLevel(hierarchy_t const& hierarch
         auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
         if (god.isActive())
         {
-            if (god.time_is("EMAvg_E_z", 0.225))
+            // if (god.time_is("EMAvg_E_z", 0.224375))
             {
                 auto ez_dbg_rge = god.inspect("EMAvg_E_z", {12.9, 8.05}, {12.9, 8.42});
                 god.print(ez_dbg_rge);
@@ -339,6 +339,17 @@ void SolverPPC<HybridModel, AMR_Types>::predictor2_(level_t& level, ModelViews_t
         fromCoarser.fillCurrentGhosts(views.model().state.J, level.getLevelNumber(), newTime);
     }
 
+    {
+        auto& god = amr::DEBUGOD<PHARE::core::PHARE_Types<2, 1>>::INSTANCE();
+        if (god.isActive())
+        {
+            // if (god.time_is("EMAvg_E_z", 0.224375))
+            {
+                auto godvals = god.inspect("rho", {12.9, 8.05}, {12.9, 8.42});
+                god.print(godvals);
+            }
+        }
+    }
     {
         PHARE_LOG_SCOPE(1, "SolverPPC::predictor2_.ohm");
         for (auto& state : views)

@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include <cstdint>
 #include <source_location>
+#include <filesystem>
 
 namespace PHARE::amr
 {
@@ -47,6 +48,7 @@ public:
         std::string name;
         int level;
         std::source_location src_loc;
+        double time;
 
         // Add other necessary fields and methods as needed
     };
@@ -58,6 +60,20 @@ public:
     }
 
     bool isActive() const { return hierarchy_ != nullptr; }
+
+    NO_DISCARD auto getTime(std::string name, SAMRAI::hier::Patch const& patch) const
+    {
+        auto pdata = getPatchData(patch, name);
+        if (pdata)
+        {
+            return pdata->getTime();
+        }
+        else
+        {
+            throw std::runtime_error("Patch data not found for " + name);
+        }
+    }
+
 
     NO_DISCARD auto time_is(std::string name, double time) const
     {
@@ -103,29 +119,6 @@ public:
                     amr_user_box.upper[i]
                         = static_cast<int>((extract_box.upper[i]) / layout.meshSize()[i]);
                 }
-
-                // for (auto i = 0u; i < dimension; ++i)
-                // {
-                //     if (centering[i] == PHARE::core::QtyCentering::primal)
-                //     {
-                //         extract_box.upper[i] += 1;
-                //     }
-                // }
-
-                // patch_ghost_box.lower[core::dirX]
-                //     = patch_ghost_box.lower[core::dirX] * layout.meshSize()[core::dirX];
-                // patch_ghost_box.lower[core::dirY]
-                //     = patch_ghost_box.lower[core::dirY] * layout.meshSize()[core::dirY];
-                // patch_ghost_box.lower[core::dirZ]
-                //     = patch_ghost_box.lower[core::dirZ] * layout.meshSize()[core::dirZ];
-                //
-                // patch_ghost_box.upper[core::dirX]
-                //     = patch_ghost_box.upper[core::dirX] * layout.meshSize()[core::dirX];
-                // patch_ghost_box.upper[core::dirY]
-                //     = patch_ghost_box.upper[core::dirY] * layout.meshSize()[core::dirY];
-                // patch_ghost_box.upper[core::dirZ]
-                //     = patch_ghost_box.upper[core::dirZ] * layout.meshSize()[core::dirZ];
-
 
 
                 auto intersected_box = patch_ghost_box * amr_user_box;
@@ -191,6 +184,7 @@ public:
                             gval.name      = name;
                             gval.level     = ilvl;
                             gval.src_loc   = location;
+                            gval.time      = getTime(name, *patch);
                             // std::cout << "adding value: " << gval.value
                             //           << " at coords: " << gval.coords.str() << " on patch "
                             //           << gval.patchID << " at rank: " << gval.rank << "\n";
@@ -238,7 +232,8 @@ public:
                 std::cout << " = " << v.value << " on L" << v.level;
                 std::cout << " Rank: " << rank;
                 std::cout << " PatchID: " << patchID;
-                std::cout << " at " << v.src_loc.file_name() << ":" << v.src_loc.line();
+                std::cout << " at " << std::filesystem::path(v.src_loc.file_name()).filename()
+                          << ":" << v.src_loc.line();
                 std::cout << "\n";
             }
         }
