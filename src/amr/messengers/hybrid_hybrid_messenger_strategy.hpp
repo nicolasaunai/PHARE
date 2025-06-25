@@ -876,6 +876,7 @@ namespace amr
             // here we create the schedule on the fly because it is the only moment where we
             // have both the old and current level
 
+            std::cout << "regriding B\n";
             auto magSchedule = Balgo.createSchedule(
                 level, oldLevel, level->getNextCoarserHierarchyLevelNumber(), hierarchy);
             magSchedule->fillData(initDataTime);

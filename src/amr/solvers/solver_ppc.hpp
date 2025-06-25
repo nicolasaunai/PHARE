@@ -254,7 +254,7 @@ void SolverPPC<HybridModel, AMR_Types>::advanceLevel(hierarchy_t const& hierarch
                 or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
             {
                 std::cout << "NEW TIME: " << newTime << std::endl;
-                auto ez_dbg_rge = god.inspect("EMAvg_E_z", {12.9, 8.05}, {12.9, 8.42},
+                auto ez_dbg_rge = god.inspect("EMAvg_E_z", {12.9, 7.3}, {12.9, 9.21},
                                               std::source_location::current(), "avg1");
                 god.print(ez_dbg_rge);
             }
@@ -276,7 +276,7 @@ void SolverPPC<HybridModel, AMR_Types>::advanceLevel(hierarchy_t const& hierarch
                 or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
             {
                 std::cout << "NEW TIME: " << newTime << std::endl;
-                auto ez_dbg_rge = god.inspect("EMAvg_E_z", {12.9, 8.05}, {12.9, 8.42},
+                auto ez_dbg_rge = god.inspect("EMAvg_E_z", {12.9, 7.23}, {12.9, 9.21},
                                               std::source_location::current(), "avg2");
                 god.print(ez_dbg_rge);
             }
@@ -313,9 +313,25 @@ void SolverPPC<HybridModel, AMR_Types>::predictor1_(level_t& level, ModelViews_t
             or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
         {
             std::cout << "NEW TIME: " << newTime << std::endl;
-            auto bx_dbg_rge = god.inspect("EMPred_B_x", {12.9, 8.05}, {12.9, 8.35},
+            auto bx_dbg_rge = god.inspect("EMPred_B_x", {12.9, 7.23}, {12.9, 9.21},
                                           std::source_location::current(), "pred1");
+            auto by_dbg_rge = god.inspect("EMPred_B_y", {12.61, 7.23}, {13.01, 9.21},
+                                          std::source_location::current(), "pred1");
+
+            auto ez_dbg_rge = god.inspect("EM_E_z", {12.81, 7.41}, {13.01, 7.41},
+                                          std::source_location::current(), "pred1 POUET");
+
+            auto byn_dbg_rge = god.inspect("EM_B_y", {12.61, 7.23}, {13.11, 9.21},
+                                           std::source_location::current(), "Bn at pred1");
+
+            auto bxn_dbg_rge = god.inspect("EM_B_x", {12.81, 7.21}, {13.2, 7.51},
+                                           std::source_location::current(), "Bxn at pred1");
+
             god.print(bx_dbg_rge);
+            god.print(by_dbg_rge);
+            god.print(ez_dbg_rge);
+            god.print(byn_dbg_rge);
+            god.print(bxn_dbg_rge);
         }
     }
 
@@ -333,12 +349,12 @@ void SolverPPC<HybridModel, AMR_Types>::predictor1_(level_t& level, ModelViews_t
             or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
         {
             std::cout << "NEW TIME: " << newTime << std::endl;
-            auto jz = god.inspect("J_z", {12.9, 8.05}, {12.9, 8.35},
-                                  std::source_location::current(), "pred2");
+            auto jz = god.inspect("J_z", {12.9, 7.23}, {12.9, 8.35},
+                                  std::source_location::current(), "pred1");
             auto jx = god.inspect("J_x", {12.5, 8.1}, {13., 8.1}, std::source_location::current(),
                                   "pred2");
             auto jy = god.inspect("J_y", {12.81, 7.95}, {12.81, 8.15},
-                                  std::source_location::current(), "pred2");
+                                  std::source_location::current(), "pred1");
             god.print(jx);
             god.print(jy);
             god.print(jz);
@@ -357,13 +373,13 @@ void SolverPPC<HybridModel, AMR_Types>::predictor1_(level_t& level, ModelViews_t
                 // This is a debug point to check the average electric field
                 // at a specific time and location.
                 {
-                    auto godvals    = god.inspect("rho", {12.9, 8.05}, {12.9, 8.42},
+                    auto godvals    = god.inspect("rho", {12.9, 7.23}, {12.9, 9.21},
                                                   std::source_location::current(), "pred1");
-                    auto godvals_vx = god.inspect("bulkVel_x", {12.9, 8.05}, {12.9, 8.42},
+                    auto godvals_vx = god.inspect("bulkVel_x", {12.9, 7.23}, {12.9, 8.42},
                                                   std::source_location::current(), "pred1");
-                    auto godvals_vy = god.inspect("bulkVel_y", {12.9, 8.05}, {12.9, 8.42},
+                    auto godvals_vy = god.inspect("bulkVel_y", {12.9, 7.23}, {12.9, 8.42},
                                                   std::source_location::current(), "pred1");
-                    auto godvals_vz = god.inspect("bulkVel_z", {12.9, 8.05}, {12.9, 8.42},
+                    auto godvals_vz = god.inspect("bulkVel_z", {12.9, 7.23}, {12.9, 8.42},
                                                   std::source_location::current(), "pred1");
                     god.print(godvals);
                     god.print(godvals_vx);
@@ -388,7 +404,7 @@ void SolverPPC<HybridModel, AMR_Types>::predictor1_(level_t& level, ModelViews_t
                     or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
                 {
                     std::cout << "NEW TIME: " << newTime << std::endl;
-                    auto bx_dbg_rge = god.inspect("EMPred_E_z", {12.9, 8.05}, {12.9, 8.35},
+                    auto bx_dbg_rge = god.inspect("EMPred_E_z", {12.9, 7.23}, {12.9, 9.21},
                                                   std::source_location::current(), "pred1");
                     god.print(bx_dbg_rge);
                 }
@@ -424,7 +440,7 @@ void SolverPPC<HybridModel, AMR_Types>::predictor2_(level_t& level, ModelViews_t
                 or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
             {
                 std::cout << "NEW TIME: " << newTime << std::endl;
-                auto bx_dbg_rge = god.inspect("EMPred_B_x", {12.9, 8.05}, {12.9, 8.35},
+                auto bx_dbg_rge = god.inspect("EMPred_B_x", {12.9, 7.23}, {12.9, 9.21},
                                               std::source_location::current(), "pred2");
                 god.print(bx_dbg_rge);
             }
@@ -445,7 +461,7 @@ void SolverPPC<HybridModel, AMR_Types>::predictor2_(level_t& level, ModelViews_t
                 or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
             {
                 std::cout << "NEW TIME: " << newTime << std::endl;
-                auto jz = god.inspect("J_z", {12.9, 8.05}, {12.9, 8.35},
+                auto jz = god.inspect("J_z", {12.9, 7.23}, {12.9, 9.21},
                                       std::source_location::current(), "pred2");
                 auto jx = god.inspect("J_x", {12.5, 8.1}, {13., 8.1},
                                       std::source_location::current(), "pred2");
@@ -473,13 +489,13 @@ void SolverPPC<HybridModel, AMR_Types>::predictor2_(level_t& level, ModelViews_t
                 // This is a debug point to check the average electric field
                 // at a specific time and location.
                 {
-                    auto godvals    = god.inspect("rho", {12.9, 8.05}, {12.9, 8.42},
+                    auto godvals    = god.inspect("rho", {12.9, 7.23}, {12.9, 9.21},
                                                   std::source_location::current(), "pred2");
-                    auto godvals_vx = god.inspect("bulkVel_x", {12.9, 8.05}, {12.9, 8.42},
+                    auto godvals_vx = god.inspect("bulkVel_x", {12.9, 7.23}, {12.9, 9.21},
                                                   std::source_location::current(), "pred2");
-                    auto godvals_vy = god.inspect("bulkVel_y", {12.9, 8.05}, {12.9, 8.42},
+                    auto godvals_vy = god.inspect("bulkVel_y", {12.9, 7.23}, {12.9, 9.21},
                                                   std::source_location::current(), "pred2");
-                    auto godvals_vz = god.inspect("bulkVel_z", {12.9, 8.05}, {12.9, 8.42},
+                    auto godvals_vz = god.inspect("bulkVel_z", {12.9, 7.23}, {12.9, 9.21},
                                                   std::source_location::current(), "pred2");
                     god.print(godvals);
                     god.print(godvals_vx);
@@ -505,7 +521,7 @@ void SolverPPC<HybridModel, AMR_Types>::predictor2_(level_t& level, ModelViews_t
                     or core::float_equals(newTime, 0.2225) or core::float_equals(newTime, 0.22375))
                 {
                     std::cout << "NEW TIME: " << newTime << std::endl;
-                    auto bx_dbg_rge = god.inspect("EMPred_E_z", {12.9, 8.05}, {12.9, 8.35},
+                    auto bx_dbg_rge = god.inspect("EMPred_E_z", {12.9, 7.23}, {12.9, 9.21},
                                                   std::source_location::current(), "pred2");
                     god.print(bx_dbg_rge);
                 }

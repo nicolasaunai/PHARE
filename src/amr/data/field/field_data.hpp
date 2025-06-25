@@ -353,6 +353,15 @@ namespace amr
             core::FieldBox<Grid_t const> const src{
                 source.field, source.gridLayout,
                 phare_lcl_box_from<dimension>(AMRToLocal(intersectBox, sourceBox))};
+
+            if (this->getBox().lower(0) == 54 and this->getBox().upper(0) == 63
+                and this->getBox().lower(1) == 36 and this->getBox().upper(1) == 45)
+            {
+                std::cout << "copy_ from source: " << source.field.name()
+                          << " to destination: " << fieldDestination.name()
+                          << " intersectBox: " << intersectBox << " sourceBox: " << sourceBox
+                          << " destinationBox: " << destinationBox << "\n";
+            }
             operate_on_fields<Operator>(dst, src);
         }
 

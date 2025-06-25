@@ -120,6 +120,9 @@ namespace amr
             SAMRAI::hier::BoxContainer const& destinationRestrictBoxes
             = SAMRAI::hier::BoxContainer{}) const final
         {
+            std::cout << "FieldGeometry::calculateOverlap called with sourceMask: " << sourceMask
+                      << " fillBox: " << fillBox << " overwriteInterior: " << overwriteInterior
+                      << "\n";
             auto& destinationCast = dynamic_cast<FieldGeometry const&>(destinationGeometry);
             auto& sourceCast      = dynamic_cast<FieldGeometry const&>(sourceGeometry);
             return doOverlap_(destinationCast, sourceCast, sourceMask, fillBox, overwriteInterior,
@@ -291,24 +294,50 @@ namespace amr
             // if we don't want to fill the interior we remove it from the intersection
             // which may add multiple boxes to the container.
 
+            bool pp = false;
+            if (quantity_ == core::HybridQuantity::Scalar::Bx
+                or quantity_ == core::HybridQuantity::Scalar::By)
+            {
+                pp = true;
+                std::cout << "quantity is Bx or By\n";
+            }
+            if (pp)
+                std::cout << "FieldGeometry Debug boxes :\n"
+                          << "sourceBox: " << sourceBox << "\n"
+                          << "destinationBox: " << destinationBox << "\n"
+                          << "fillField: " << fillField << "\n"
+                          << "together: " << together << "\n";
             if (!together.empty())
             {
+                if (pp)
+                    std::cout << "together is not empty, adding to destinationBoxes\n";
                 if (overwriteInterior)
                 {
+                    if (pp)
+                        std::cout
+                            << "overwriteInterior is true, adding together to destinationBoxes\n";
                     destinationBoxes.push_back(together);
                 }
                 else
                 {
+                    if (pp)
+                        std::cout
+                            << "overwriteInterior is false, removing interior from together\n";
                     destinationBoxes.removeIntersections(together, this->interiorFieldBox_);
                 }
             }
 
             if (!destinationRestrictBoxes.empty() && !destinationBoxes.empty())
             {
+                if (pp)
+                    std::cout << "destinationRestrictBoxes is not empty, intersecting with "
+                                 "destinationBoxes\n";
                 SAMRAI::hier::BoxContainer restrictBoxes;
                 for (auto box = destinationRestrictBoxes.begin();
                      box != destinationRestrictBoxes.end(); ++box)
                 {
+                    std::cout << "restricting box: "
+                              << toFieldBox(*box, quantity_, layoutFromBox(*box, layout_)) << "\n";
                     restrictBoxes.push_back(
                         toFieldBox(*box, quantity_, layoutFromBox(*box, layout_)));
                 }
