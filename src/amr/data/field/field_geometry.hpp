@@ -294,12 +294,16 @@ namespace amr
             // if we don't want to fill the interior we remove it from the intersection
             // which may add multiple boxes to the container.
 
-            bool pp = false;
-            if (quantity_ == core::HybridQuantity::Scalar::Bx
-                or quantity_ == core::HybridQuantity::Scalar::By)
+            bool pp = true;
+            if (quantity_ == core::HybridQuantity::Scalar::Bx)
             {
                 pp = true;
-                std::cout << "quantity is Bx or By\n";
+                std::cout << "quantity is Bx\n";
+            }
+            if (quantity_ == core::HybridQuantity::Scalar::By)
+            {
+                pp = true;
+                std::cout << "quantity is  By\n";
             }
             if (pp)
                 std::cout << "FieldGeometry Debug boxes :\n"

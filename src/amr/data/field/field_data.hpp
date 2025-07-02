@@ -407,6 +407,11 @@ namespace amr
                         SAMRAI::hier::Box const intersectionBox{box * transformedSource
                                                                 * destinationBox};
 
+                        std::cout << "copy_ before intersect from source: " << source.field.name()
+                                  << " to destination: " << dst.name()
+                                  << " intersectionBox: " << intersectionBox
+                                  << " sourceBox: " << sourceBox
+                                  << " destinationBox: " << destinationBox << "\n";
                         if (!intersectionBox.empty())
                             copy_<Operator>(intersectionBox, transformedSource, destinationBox,
                                             source, dst);
