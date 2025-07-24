@@ -58,7 +58,8 @@ public:
     SAMRAI::hier::IntVector
     getRefineOpStencilWidth(const SAMRAI::tbox::Dimension& dim) const override
     {
-        return SAMRAI::hier::IntVector(dim, 1); // hard-coded 0th order base interpolation
+        // return SAMRAI::hier::IntVector(dim, 0); // hard-coded 0th order base interpolation
+        return SAMRAI::hier::IntVector(dim, 0); // hard-coded 0th order base interpolation
     }
 
 
@@ -79,6 +80,11 @@ public:
         auto& bx = FieldDataT::getField(fine, bx_id_);
         auto& by = FieldDataT::getField(fine, by_id_);
         auto& bz = FieldDataT::getField(fine, bz_id_);
+        if constexpr (dimension == 2)
+            if (fine.getBox().lower()[0] == 77 and fine.getBox().upper()[0] == 85)
+            {
+                std::cout << "Coarse 78 93 = " << bx(3, 2) << std::endl;
+            }
 
         auto layout        = PHARE::amr::layoutFromPatch<gridlayout_type>(fine);
         auto fineBoxLayout = Geometry::layoutFromBox(fine_box, layout);
@@ -100,14 +106,16 @@ public:
 
         else if constexpr (dimension == 2)
         {
-            for (auto const& i : layout.AMRToLocal(phare_box_from<dimension>(fine_box_x)))
+            // for (auto const& i : layout.AMRToLocal(phare_box_from<dimension>(fine_box_x)))
+            for (auto const& i : phare_box_from<dimension>(fine_box_x))
             {
-                postprocessBx2d(bx, by, i);
+                std::cout << "postprocessBx2d " << i << std::endl;
+                postprocessBx2d(bx, by, i, fine_box_x);
             }
 
-            for (auto const& i : layout.AMRToLocal(phare_box_from<dimension>(fine_box_y)))
+            for (auto const& i : phare_box_from<dimension>(fine_box_y))
             {
-                postprocessBy2d(bx, by, i);
+                postprocessBy2d(bx, by, i, fine_box_y);
             }
         }
 
@@ -140,21 +148,23 @@ public:
             bx(ix) = 0.5 * (bx(ix - 1) + bx(ix + 1));
     }
 
-    static void postprocessBx2d(auto& bx, auto& by, core::MeshIndex<dimension> idx)
+    static void postprocessBx2d(auto& bx, auto& by, core::Point<int, dimension> idx,
+                                auto const& fineBox)
     {
-        auto ix = idx[dirX];
-        auto iy = idx[dirY];
+        auto locIdx = AMRToLocal(idx, fineBox);
+        auto ix     = locIdx[dirX];
+        auto iy     = locIdx[dirY];
         //                            | <- here with offset = 1
         //                          -- --
         //                            | <- or here with offset = 0
-        if (ix % 2 == 1)
+        if (idx[dirX] % 2 == 1)
         {
             // If dual no offset, ie primal for the field we are actually
             // modifying, but dual for the field we are indexing to compute
             // second and third order terms, then the formula reduces to offset
             // = 1
             int xoffset = 1;
-            int yoffset = (iy % 2 == 0) ? 0 : 1;
+            int yoffset = (idx[dirY] % 2 == 0) ? 0 : 1;
 
             bx(ix, iy) = 0.5 * (bx(ix - 1, iy) + bx(ix + 1, iy))
                          + 0.25
@@ -162,19 +172,34 @@ public:
                                   - by(d_minus(ix, xoffset), p_plus(iy, yoffset))
                                   - by(d_plus(ix, xoffset), p_minus(iy, yoffset))
                                   + by(d_plus(ix, xoffset), p_plus(iy, yoffset)));
+            if (std::isnan(bx(ix, iy)))
+            {
+                std::cout << "idx = " << idx << " bx(ix-1, iy) = " << bx(ix - 1, iy)
+                          << ", bx(ix+1, iy) = " << bx(ix + 1, iy)
+                          << ", by(d_minus(ix, xoffset), p_minus(iy, yoffset)) = "
+                          << by(d_minus(ix, xoffset), p_minus(iy, yoffset))
+                          << ", by(d_minus(ix, xoffset), p_plus(iy, yoffset)) = "
+                          << by(d_minus(ix, xoffset), p_plus(iy, yoffset))
+                          << ", by(d_plus(ix, xoffset), p_minus(iy, yoffset)) = "
+                          << by(d_plus(ix, xoffset), p_minus(iy, yoffset))
+                          << ", by(d_plus(ix, xoffset), p_plus(iy, yoffset)) = "
+                          << by(d_plus(ix, xoffset), p_plus(iy, yoffset)) << std::endl;
+            }
         }
     }
 
-    static void postprocessBy2d(auto& bx, auto& by, core::MeshIndex<dimension> idx)
+    static void postprocessBy2d(auto& bx, auto& by, core::Point<int, dimension> idx,
+                                auto const& fineBox)
     {
-        auto ix = idx[dirX];
-        auto iy = idx[dirY];
+        auto locIdx = AMRToLocal(idx, fineBox);
+        auto ix     = locIdx[dirX];
+        auto iy     = locIdx[dirY];
         //                            |
         //  here with offset = 0 -> -- -- <- or here with offset = 1
         //                            |
-        if (iy % 2 == 1)
+        if (idx[dirY] % 2 == 1)
         {
-            int xoffset = (ix % 2 == 0) ? 0 : 1;
+            int xoffset = (idx[dirX] % 2 == 0) ? 0 : 1;
             int yoffset = 1;
 
             by(ix, iy) = 0.5 * (by(ix, iy - 1) + by(ix, iy + 1))

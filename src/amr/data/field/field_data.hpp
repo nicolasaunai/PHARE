@@ -372,7 +372,7 @@ namespace amr
             // Then we represent the intersection into the local space of the destination
             SAMRAI::hier::Box localDestinationBox{AMRToLocal(intersectBox, destinationBox)};
 
-            if constexpr (std::is_same_v<PhysicalQuantity, core::MHDQuantity>)
+            if constexpr (std::is_same_v<PhysicalQuantity, core::MHDQuantity::Scalar>)
                 if (fieldSource.physicalQuantity() == core::MHDQuantity::Scalar::Bx)
                 {
                     std::cout << "copying from " << sourceBox << " to " << destinationBox

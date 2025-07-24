@@ -67,7 +67,8 @@ public:
     NO_DISCARD SAMRAI::hier::IntVector
     getStencilWidth(SAMRAI::tbox::Dimension const& dim) const override
     {
-        return SAMRAI::hier::IntVector::getOne(dim);
+        // return SAMRAI::hier::IntVector::getOne(dim);
+        return SAMRAI::hier::IntVector(dim, 0); // hard-coded 0th order base interpolation
     }
 
 
@@ -160,6 +161,7 @@ public:
                 {
                     for (int iy = iStartY; iy <= iEndY; ++iy)
                     {
+                        std::cout << "Refining at index (" << ix << ", " << iy << ")" << std::endl;
                         refiner(sourceField, destinationField, {{ix, iy}});
                     }
                 }

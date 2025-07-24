@@ -548,6 +548,8 @@ namespace amr
             auto levelNumber = level.getLevelNumber();
             auto& mhdModel   = static_cast<MHDModel&>(model);
 
+            std::cout << "MHDMessenger::postSynchronize: levelNumber = " << levelNumber
+                      << ", time = " << time << std::endl;
             magSharedNodeRefineSchedules[levelNumber]->fillData(time);
             // magPatchGhostsRefineSchedules[levelNumber]->fillData(time);
         }
@@ -717,6 +719,9 @@ namespace amr
                     B(core::Component::Z)(args...) = std::numeric_limits<double>::quiet_NaN();
                 });
             }
+
+            std::cout << "old level ? "
+                      << (oldLevel ? std::to_string(oldLevel->getLevelNumber()) : "null") << "\n";
 
             auto regridCopySchedule = BcopyAlgo.createSchedule(level, oldLevel);
             regridCopySchedule->fillData(initDataTime);

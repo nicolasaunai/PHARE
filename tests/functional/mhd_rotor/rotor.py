@@ -41,7 +41,7 @@ def config():
         diag_options={
             "format": "phareh5",
             "options": {"dir": diag_outputs, "mode": "overwrite"},
-            "fine_dump_level_max": 10,
+            "fine_dump_lvl_max": 10,
         },
         strict=True,
         eta=0.0,
