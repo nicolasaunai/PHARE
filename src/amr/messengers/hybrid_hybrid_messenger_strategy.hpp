@@ -170,26 +170,31 @@ namespace amr
             std::shared_ptr<SAMRAI::xfer::VariableFillPattern> zVariableFillPattern
                 = std::make_shared<ZVariableFillPattern>();
 
-            auto bx_id = resourcesManager_->getID(hybridInfo->modelMagnetic.xName);
-            auto by_id = resourcesManager_->getID(hybridInfo->modelMagnetic.yName);
-            auto bz_id = resourcesManager_->getID(hybridInfo->modelMagnetic.zName);
+            auto b_id = resourcesManager_->getID(hybridInfo->modelMagnetic);
+            // auto by_id = resourcesManager_->getID(hybridInfo->modelMagnetic.yName);
+            // auto bz_id = resourcesManager_->getID(hybridInfo->modelMagnetic.zName);
 
-            if (!bx_id or !by_id or !bz_id)
+            if (!b_id)
             {
                 throw std::runtime_error(
                     "HybridHybridMessengerStrategy: missing magnetic field variable IDs");
             }
 
-            magneticRefinePatchStrategy_.registerIDs(*bx_id, *by_id, *bz_id);
+            magneticRefinePatchStrategy_.registerIDs(*b_id);
 
-            Balgo.registerRefine(*bx_id, *bx_id, *bx_id, BfieldRefineOp_, xVariableFillPattern);
-            Balgo.registerRefine(*by_id, *by_id, *by_id, BfieldRefineOp_, yVariableFillPattern);
-            Balgo.registerRefine(*bz_id, *bz_id, *bz_id, BfieldRefineOp_, zVariableFillPattern);
+            Balgo.registerRefine(*b_id, *b_id, *b_id, BfieldRefineOp_, xVariableFillPattern);
+            // Balgo.registerRefine(*by_id, *by_id, *by_id, BfieldRefineOp_, yVariableFillPattern);
+            // Balgo.registerRefine(*bz_id, *bz_id, *bz_id, BfieldRefineOp_, zVariableFillPattern);
 
-
-            auto ex_id = resourcesManager_->getID(hybridInfo->modelElectric.xName);
-            auto ey_id = resourcesManager_->getID(hybridInfo->modelElectric.yName);
-            auto ez_id = resourcesManager_->getID(hybridInfo->modelElectric.zName);
+            BalgoNode.registerRefine(*b_id, *b_id, *b_id, BfieldNodeRefineOp_,
+                                     xVariableFillPattern);
+            // BalgoNode.registerRefine(*by_id, *by_id, *by_id, BfieldNodeRefineOp_,
+            //                          yVariableFillPattern);
+            // BalgoNode.registerRefine(*bz_id, *bz_id, *bz_id, BfieldNodeRefineOp_,
+            //                          zVariableFillPattern);
+            auto ex_id = resourcesManager_->getID(hybridInfo->modelElectric);
+            auto ey_id = resourcesManager_->getID(hybridInfo->modelElectric);
+            auto ez_id = resourcesManager_->getID(hybridInfo->modelElectric);
 
             if (!ex_id or !ey_id or !ez_id)
             {
@@ -519,6 +524,8 @@ namespace amr
                     auto& particleDensity = pop.particleDensity();
                     auto& chargeDensity   = pop.chargeDensity();
                     auto& flux            = pop.flux();
+                    // first thing to do is to project patchGhostParitcles moments
+
 
                     if (level.getLevelNumber() > 0) // no levelGhost on root level
                     {
@@ -758,8 +765,7 @@ namespace amr
 
 
             velGhostsRefiners_.addTimeRefiners(info->ghostBulkVelocity, info->modelIonBulkVelocity,
-                                               core::VecFieldNames{ViOld_}, fieldRefineOp_,
-                                               fieldTimeOp_, defaultFieldFillPattern);
+                                               ViOld_.name(), fieldRefineOp_, fieldTimeOp_);
         }
 
 
@@ -768,7 +774,7 @@ namespace amr
         void registerInitComms(std::unique_ptr<HybridMessengerInfo> const& info)
         {
             electricInitRefiners_.addStaticRefiners(info->initElectric, EfieldRefineOp_,
-                                                    makeKeys(info->initElectric));
+                                                    info->initElectric);
 
 
             domainParticlesRefiners_.addStaticRefiners(
@@ -811,13 +817,12 @@ namespace amr
         void registerSyncComms(std::unique_ptr<HybridMessengerInfo> const& info)
         {
             magnetoSynchronizers_.add(info->modelMagnetic, magneticCoarseningOp_,
-                                      info->modelMagnetic.vecName);
+                                      info->modelMagnetic);
 
-            electroSynchronizers_.add(info->modelElectric, fieldCoarseningOp_,
-                                      info->modelElectric.vecName);
+            electroSynchronizers_.add(info->modelElectric, fieldCoarseningOp_, info->modelElectric);
 
             ionBulkVelSynchronizers_.add(info->modelIonBulkVelocity, fieldCoarseningOp_,
-                                         info->modelIonBulkVelocity.vecName);
+                                         info->modelIonBulkVelocity);
 
             densitySynchronizers_.add(info->modelIonDensity, fieldCoarseningOp_,
                                       info->modelIonDensity);

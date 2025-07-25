@@ -77,14 +77,13 @@ public:
 
 
     TensorFieldGeometry(SAMRAI::hier::Box const& box, GridLayoutT const& layout, tensor_t const qty)
-        : Super(
-              box,
-              toTensorFieldBox(SAMRAI::hier::Box::grow(
-                                   box, SAMRAI::hier::IntVector{SAMRAI::tbox::Dimension{dimension},
-                                                                GridLayoutT::nbrGhosts()}),
-                               qty, layout),
-              toTensorFieldBox(box, qty, layout),
-              ConstArray<core::QtyCentering, dimension>(core::QtyCentering::primal))
+        : Super(box,
+                toFieldBox(SAMRAI::hier::Box::grow(
+                               box, SAMRAI::hier::IntVector{SAMRAI::tbox::Dimension{dimension},
+                                                            GridLayoutT::nbrGhosts()}),
+                           qty, layout),
+                toFieldBox(box, qty, layout),
+                ConstArray<core::QtyCentering, dimension>(core::QtyCentering::primal))
         , layout_{layout}
         , quantity_{qty}
     {
@@ -120,7 +119,7 @@ public:
         for (auto& box : boxes)
         {
             core::GridLayout const layout = layoutFromBox(box, layout_);
-            destinationBoxes.push_back(toTensorFieldBox(box, quantity_, layout));
+            destinationBoxes.push_back(toFieldBox(box, quantity_, layout));
         }
 
         return std::make_shared<FieldOverlap>(destinationBoxes, offset);
@@ -128,8 +127,8 @@ public:
 
 
 
-    static SAMRAI::hier::Box toTensorFieldBox(SAMRAI::hier::Box box, tensor_t qty,
-                                              GridLayoutT const& layout)
+    static SAMRAI::hier::Box toFieldBox(SAMRAI::hier::Box box, tensor_t qty,
+                                        GridLayoutT const& layout)
     {
         SAMRAI::hier::IntVector lower = box.lower();
         SAMRAI::hier::IntVector upper = box.upper();
@@ -184,11 +183,9 @@ private:
 
         auto const& destinationBox = this->ghostTensorFieldBox_;
 
-        SAMRAI::hier::Box const sourceBox{
-            toTensorFieldBox(sourceShift, quantity_, sourceShiftLayout)};
+        SAMRAI::hier::Box const sourceBox{toFieldBox(sourceShift, quantity_, sourceShiftLayout)};
 
-        SAMRAI::hier::Box const fillTensorField{
-            toTensorFieldBox(fillBox, quantity_, fillBoxLayout)};
+        SAMRAI::hier::Box const fillTensorField{toFieldBox(fillBox, quantity_, fillBoxLayout)};
 
 
         SAMRAI::hier::Box const together(destinationBox * sourceBox * fillTensorField);
@@ -211,8 +208,7 @@ private:
             for (auto box = destinationRestrictBoxes.begin(); box != destinationRestrictBoxes.end();
                  ++box)
             {
-                restrictBoxes.push_back(
-                    toTensorFieldBox(*box, quantity_, layoutFromBox(*box, layout_)));
+                restrictBoxes.push_back(toFieldBox(*box, quantity_, layoutFromBox(*box, layout_)));
             }
 
             destinationBoxes.intersectBoxes(restrictBoxes);

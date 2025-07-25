@@ -1,6 +1,7 @@
 #ifndef PHARE_SRC_AMR_TENSORFIELD_TENSORFIELD_DATA_HPP
 #define PHARE_SRC_AMR_TENSORFIELD_TENSORFIELD_DATA_HPP
 
+#include "amr/resources_manager/amr_utils.hpp"
 #include "core/def/phare_mpi.hpp" // IWYU pragma: keep
 
 #include "core/logger.hpp"
@@ -100,41 +101,41 @@ public:
     {
         PHARE_LOG_SCOPE(3, "TensorFieldData::copy");
 
-        // // After checking that source and *this have the same number of dimension
-        // // We will try to cast source as a TensorFieldData, if it succeed we can continue
-        // // and perform the copy. Otherwise we call copy2 that will simply throw a runtime
-        // // error
+        // After checking that source and *this have the same number of dimension
+        // We will try to cast source as a TensorFieldData, if it succeed we can continue
+        // and perform the copy. Otherwise we call copy2 that will simply throw a runtime
+        // error
 
-        // TBOX_ASSERT_OBJDIM_EQUALITY2(*this, source);
+        TBOX_ASSERT_OBJDIM_EQUALITY2(*this, source);
 
-        // // throws on failure
-        // auto& fieldSource = dynamic_cast<TensorFieldData const&>(source);
+        // throws on failure
+        auto& fieldSource = dynamic_cast<TensorFieldData const&>(source);
 
-        // TBOX_ASSERT(quantity_ == fieldSource.quantity_);
-        // // First step is to translate the AMR box into proper index space of the given
-        // // quantity_ using the source gridlayout to accomplish that we get the interior box,
-        // // from the TensorFieldData.
+        TBOX_ASSERT(quantity_ == fieldSource.quantity_);
+        // First step is to translate the AMR box into proper index space of the given
+        // quantity_ using the source gridlayout to accomplish that we get the interior box,
+        // from the TensorFieldData.
 
-        // SAMRAI::hier::Box sourceBox = Geometry::toFieldBox(fieldSource.getGhostBox(),
-        // quantity_,
-        //                                                    fieldSource.gridLayout);
+        SAMRAI::hier::Box sourceBox
+            = Geometry::toFieldBox(fieldSource.getGhostBox(), quantity_, fieldSource.gridLayout);
 
 
-        // SAMRAI::hier::Box destinationBox
-        //     = Geometry::toFieldBox(this->getGhostBox(), quantity_, this->gridLayout);
+        SAMRAI::hier::Box destinationBox
+            = Geometry::toFieldBox(this->getGhostBox(), quantity_, this->gridLayout);
 
-        // // Given the two boxes in correct space we just have to intersect them
-        // SAMRAI::hier::Box intersectionBox = sourceBox * destinationBox;
+        // Given the two boxes in correct space we just have to intersect them
+        SAMRAI::hier::Box intersectionBox = sourceBox * destinationBox;
 
-        // if (!intersectionBox.empty())
-        // {
-        //     auto const& sourceField = fieldSource.field;
-        //     auto& destinationField  = field;
+        if (!intersectionBox.empty())
+            for (std::size_t c = 0; c < N; ++c)
+            {
+                auto const& sourceField = fieldSource.grids[c];
+                auto& destinationField  = grids[c];
 
-        //     // We can copy field from the source to the destination on the correct region
-        //     copy_(intersectionBox, sourceBox, destinationBox, fieldSource, sourceField,
-        //           destinationField);
-        // }
+                // We can copy field from the source to the destination on the correct region
+                copy_(intersectionBox, sourceBox, destinationBox, fieldSource, sourceField,
+                      destinationField);
+            }
     }
 
 
@@ -198,7 +199,7 @@ public:
      */
     std::size_t getDataStreamSize(const SAMRAI::hier::BoxOverlap& overlap) const final
     {
-        return getDataStreamSize_<false>(overlap);
+        return getDataStreamSize_(overlap);
     }
 
 
@@ -212,41 +213,42 @@ public:
     {
         PHARE_LOG_SCOPE(3, "packStream");
 
-        // // getDataStreamSize_<true> mean that we want to apply the transformation
-        // std::size_t expectedSize = getDataStreamSize_<true>(overlap) / sizeof(double);
-        // std::vector<typename Grid_t::type> buffer;
-        // buffer.reserve(expectedSize);
+        std::size_t const expectedSize = getDataStreamSize_(overlap) / sizeof(double);
+        std::vector<typename Grid_t::type> buffer;
+        buffer.reserve(expectedSize * N); // :(
 
-        // auto& fieldOverlap = dynamic_cast<FieldOverlap const&>(overlap);
+        auto& fieldOverlap = dynamic_cast<FieldOverlap const&>(overlap);
 
-        // SAMRAI::hier::Transformation const& transformation =
-        // fieldOverlap.getTransformation(); if (transformation.getRotation() ==
-        // SAMRAI::hier::Transformation::NO_ROTATE)
-        // {
-        //     SAMRAI::hier::BoxContainer const& boxContainer
-        //         = fieldOverlap.getDestinationBoxContainer();
-        //     for (auto const& box : boxContainer)
-        //     {
-        //         auto const& source = field;
-        //         SAMRAI::hier::Box sourceBox
-        //             = Geometry::toFieldBox(getGhostBox(), quantity_, gridLayout);
+        SAMRAI::hier::Transformation const& transformation = fieldOverlap.getTransformation();
+        if (transformation.getRotation() == SAMRAI::hier::Transformation::NO_ROTATE)
+        {
+            SAMRAI::hier::BoxContainer const& boxContainer
+                = fieldOverlap.getDestinationBoxContainer();
+            for (auto const& box : boxContainer)
+            {
+                for (std::size_t c = 0; c < N; ++c)
+                {
+                    auto const& source = grids[c];
+                    SAMRAI::hier::Box sourceBox
+                        = Geometry::toFieldBox(getGhostBox(), quantity_, gridLayout);
 
-        //         SAMRAI::hier::Box packBox{box};
+                    SAMRAI::hier::Box packBox{box};
 
-        //         // Since the transformation, allow to transform the source box,
-        //         // into the destination box space, and that the box in the boxContainer
-        //         // are in destination space, we have to use the inverseTransform
-        //         // to get into source space
-        //         transformation.inverseTransform(packBox);
-        //         packBox = packBox * sourceBox;
+                    // Since the transformation, allow to transform the source box,
+                    // into the destination box space, and that the box in the boxContainer
+                    // are in destination space, we have to use the inverseTransform
+                    // to get into source space
+                    transformation.inverseTransform(packBox);
+                    packBox = packBox * sourceBox;
 
-        //         internals_.packImpl(buffer, source, packBox, sourceBox);
-        //     }
-        // }
-        // // throw, we don't do rotations in phare....
+                    internals_.packImpl(buffer, source, packBox, sourceBox);
+                }
+            }
+        }
+        // throw, we don't do rotations in phare....
 
-        // // Once we have fill the buffer, we send it on the stream
-        // stream.pack(buffer.data(), buffer.size());
+        // Once we have fill the buffer, we send it on the stream
+        stream.pack(buffer.data(), buffer.size());
     }
 
 
@@ -260,43 +262,45 @@ public:
     {
         PHARE_LOG_SCOPE(3, "unpackStream");
 
-        // // For unpacking we need to know how much element we will need to
-        // // extract
-        // std::size_t expectedSize = getDataStreamSize(overlap) / sizeof(double);
+        // For unpacking we need to know how much element we will need to
+        // extract
+        std::size_t expectedSize = getDataStreamSize(overlap) / sizeof(double);
 
-        // std::vector<double> buffer;
-        // buffer.resize(expectedSize, 0.);
+        std::vector<double> buffer;
+        buffer.resize(expectedSize, 0.);
 
-        // auto& fieldOverlap = dynamic_cast<FieldOverlap const&>(overlap);
+        auto& fieldOverlap = dynamic_cast<FieldOverlap const&>(overlap);
 
-        // // We flush a portion of the stream on the buffer.
-        // stream.unpack(buffer.data(), expectedSize);
+        // We flush a portion of the stream on the buffer.
+        stream.unpack(buffer.data(), expectedSize);
 
-        // SAMRAI::hier::Transformation const& transformation =
-        // fieldOverlap.getTransformation(); if (transformation.getRotation() ==
-        // SAMRAI::hier::Transformation::NO_ROTATE)
-        // {
-        //     // Here the seek counter will be used to index buffer
-        //     std::size_t seek = 0;
+        SAMRAI::hier::Transformation const& transformation = fieldOverlap.getTransformation();
+        if (transformation.getRotation() == SAMRAI::hier::Transformation::NO_ROTATE)
+        {
+            // Here the seek counter will be used to index buffer
+            std::size_t seek = 0;
 
-        //     SAMRAI::hier::BoxContainer const& boxContainer
-        //         = fieldOverlap.getDestinationBoxContainer();
-        //     for (auto const& box : boxContainer)
-        //     {
-        //         // For unpackStream, there is no transformation needed, since all the box
-        //         // are on the destination space
+            SAMRAI::hier::BoxContainer const& boxContainer
+                = fieldOverlap.getDestinationBoxContainer();
+            for (auto const& box : boxContainer)
+            {
+                // For unpackStream, there is no transformation needed, since all the box
+                // are on the destination space
 
-        //         auto& source = field;
-        //         SAMRAI::hier::Box destination
-        //             = Geometry::toFieldBox(getGhostBox(), quantity_, gridLayout);
-
-
-        //         SAMRAI::hier::Box packBox{box * destination};
+                for (std::size_t c = 0; c < N; ++c)
+                {
+                    auto& source = grids[c];
+                    SAMRAI::hier::Box destination
+                        = Geometry::toFieldBox(getGhostBox(), quantity_, gridLayout);
 
 
-        //         internals_.unpackImpl(seek, buffer, source, packBox, destination);
-        //     }
-        // }
+                    SAMRAI::hier::Box packBox{box * destination};
+
+
+                    internals_.unpackImpl(seek, buffer, source, packBox, destination);
+                }
+            }
+        }
     }
 
 
@@ -304,13 +308,13 @@ public:
     auto* getPointer() { return &grids; }
 
 
-    // static GridLayoutT const& getLayout(SAMRAI::hier::Patch const& patch, int id)
-    // {
-    //     auto const& patchData = std::dynamic_pointer_cast<This>(patch.getPatchData(id));
-    //     if (!patchData)
-    //         throw std::runtime_error("cannot cast to TensorFieldData");
-    //     return patchData->gridLayout;
-    // }
+    static GridLayoutT const& getLayout(SAMRAI::hier::Patch const& patch, int id)
+    {
+        auto const& patchData = std::dynamic_pointer_cast<This>(patch.getPatchData(id));
+        if (!patchData)
+            throw std::runtime_error("cannot cast to TensorFieldData");
+        return patchData->gridLayout;
+    }
 
 
     // static Grid_t& getField(SAMRAI::hier::Patch const& patch, int id)
@@ -341,19 +345,17 @@ private:
                [[maybe_unused]] TensorFieldData const& source, Grid_t const& fieldSource,
                Grid_t& fieldDestination)
     {
-        // // First we represent the intersection that is defined in AMR space to the local
-        // space
-        // // of the source
+        // First we represent the intersection that is defined in AMR space to the local space
+        // of the source
 
-        // SAMRAI::hier::Box localSourceBox{AMRToLocal(intersectBox, sourceBox)};
+        SAMRAI::hier::Box localSourceBox{AMRToLocal(intersectBox, sourceBox)};
 
-        // // Then we represent the intersection into the local space of the destination
-        // SAMRAI::hier::Box localDestinationBox{AMRToLocal(intersectBox, destinationBox)};
+        // Then we represent the intersection into the local space of the destination
+        SAMRAI::hier::Box localDestinationBox{AMRToLocal(intersectBox, destinationBox)};
 
 
-        // // We can finally perform the copy of the element in the correct range
-        // internals_.copyImpl(localSourceBox, fieldSource, localDestinationBox,
-        // fieldDestination);
+        // We can finally perform the copy of the element in the correct range
+        internals_.copyImpl(localSourceBox, fieldSource, localDestinationBox, fieldDestination);
     }
 
 
@@ -361,67 +363,64 @@ private:
 
     void copy_(TensorFieldData const& source, FieldOverlap const& overlap)
     {
-        // // Here the first step is to get the transformation from the overlap
-        // // we transform the box from the source, and from the destination
-        // // from AMR index to TensorFieldData indexes (ie whether or not the quantity is
-        // primal
-        // // or not), and we also consider the ghost. After that we compute the
-        // // intersection with the source box, the destinationBox, and the box from the
-        // // destinationBoxContainer.
+        // Here the first step is to get the transformation from the overlap
+        // we transform the box from the source, and from the destination
+        // from AMR index to TensorFieldData indexes (ie whether or not the quantity is primal
+        // or not), and we also consider the ghost. After that we compute the
+        // intersection with the source box, the destinationBox, and the box from the
+        // destinationBoxContainer.
 
 
-        // SAMRAI::hier::Transformation const& transformation = overlap.getTransformation();
+        SAMRAI::hier::Transformation const& transformation = overlap.getTransformation();
 
-        // if (transformation.getRotation() == SAMRAI::hier::Transformation::NO_ROTATE)
-        // {
-        //     SAMRAI::hier::BoxContainer const& boxList = overlap.getDestinationBoxContainer();
+        if (transformation.getRotation() == SAMRAI::hier::Transformation::NO_ROTATE)
+        {
+            SAMRAI::hier::BoxContainer const& boxList = overlap.getDestinationBoxContainer();
 
-        //     SAMRAI::hier::IntVector const zeroOffset{
-        //         SAMRAI::hier::IntVector::getZero(SAMRAI::tbox::Dimension{dimension})};
+            SAMRAI::hier::IntVector const zeroOffset{
+                SAMRAI::hier::IntVector::getZero(SAMRAI::tbox::Dimension{dimension})};
 
-        //     if (transformation.getBeginBlock() == transformation.getEndBlock())
-        //     {
-        //         for (auto const& box : boxList)
-        //         {
-        //             SAMRAI::hier::Box sourceBox = Geometry::toFieldBox(
-        //                 source.getGhostBox(), quantity_, source.gridLayout);
-
-
-        //             SAMRAI::hier::Box destinationBox = Geometry::toFieldBox(
-        //                 this->getGhostBox(), quantity_, this->gridLayout);
+            if (transformation.getBeginBlock() == transformation.getEndBlock())
+            {
+                for (auto const& box : boxList)
+                {
+                    SAMRAI::hier::Box sourceBox
+                        = Geometry::toFieldBox(source.getGhostBox(), quantity_, source.gridLayout);
 
 
-        //             SAMRAI::hier::Box transformedSource{sourceBox};
-        //             transformation.transform(transformedSource);
+                    SAMRAI::hier::Box destinationBox
+                        = Geometry::toFieldBox(this->getGhostBox(), quantity_, this->gridLayout);
 
 
-        //             SAMRAI::hier::Box intersectionBox{box * transformedSource *
-        //             destinationBox};
+                    SAMRAI::hier::Box transformedSource{sourceBox};
+                    transformation.transform(transformedSource);
 
 
-        //             if (!intersectionBox.empty())
-        //             {
-        //                 Grid_t const& sourceField = source.field;
-        //                 Grid_t& destinationField  = field;
+                    SAMRAI::hier::Box intersectionBox{box * transformedSource * destinationBox};
 
-        //                 copy_(intersectionBox, transformedSource, destinationBox, source,
-        //                       sourceField, destinationField);
-        //             }
-        //         }
-        //     }
-        // }
-        // else
-        // {
-        //     throw std::runtime_error("copy with rotate not implemented");
-        // }
+
+                    if (!intersectionBox.empty())
+                    {
+                        for (std::size_t c = 0; c < N; ++c)
+                        {
+                            Grid_t const& sourceField = source.grids[c];
+                            Grid_t& destinationField  = grids[c];
+
+                            copy_(intersectionBox, transformedSource, destinationBox, source,
+                                  sourceField, destinationField);
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            throw std::runtime_error("copy with rotate not implemented");
+        }
     }
 
 
-    /*** \brief Compute the maximum amount of memory needed to hold TensorFieldData information
-     * on the specified overlap, this version work on the source, or the destination depending
-     * on withTransform parameter
-     */
-    template<bool withTransform>
+
     std::size_t getDataStreamSize_(SAMRAI::hier::BoxOverlap const& overlap) const
     {
         // The idea here is to tell SAMRAI the maximum memory will be used by our type
@@ -436,11 +435,9 @@ private:
             return 0;
         }
 
-        // TODO: see TensorFieldDataFactory todo of the same function
-
         SAMRAI::hier::BoxContainer const& boxContainer = fieldOverlap.getDestinationBoxContainer();
 
-        return boxContainer.getTotalSizeOfBoxes() * sizeof(typename Grid_t::type);
+        return boxContainer.getTotalSizeOfBoxes() * sizeof(typename Grid_t::type) * N;
     }
 
 

@@ -151,18 +151,18 @@ void HybridModel<GridLayoutT, Electromag, Ions, Electrons, AMR_Types, Grid_t>::f
 {
     auto& hybridInfo = dynamic_cast<amr::HybridMessengerInfo&>(*info);
 
-    hybridInfo.modelMagnetic        = core::VecFieldNames{state.electromag.B};
-    hybridInfo.modelElectric        = core::VecFieldNames{state.electromag.E};
+    hybridInfo.modelMagnetic        = state.electromag.B.name();
+    hybridInfo.modelElectric        = state.electromag.E.name();
     hybridInfo.modelIonDensity      = state.ions.chargeDensityName();
-    hybridInfo.modelIonBulkVelocity = core::VecFieldNames{state.ions.velocity()};
-    hybridInfo.modelCurrent         = core::VecFieldNames{state.J};
+    hybridInfo.modelIonBulkVelocity = state.ions.velocity().name();
+    hybridInfo.modelCurrent         = state.J.name();
 
-    hybridInfo.initElectric.emplace_back(core::VecFieldNames{state.electromag.E});
-    hybridInfo.initMagnetic.emplace_back(core::VecFieldNames{state.electromag.B});
+    hybridInfo.initElectric.emplace_back(state.electromag.E.name());
+    hybridInfo.initMagnetic.emplace_back(state.electromag.B.name());
 
     hybridInfo.ghostElectric.push_back(hybridInfo.modelElectric);
     hybridInfo.ghostMagnetic.push_back(hybridInfo.modelMagnetic);
-    hybridInfo.ghostCurrent.push_back(core::VecFieldNames{state.J});
+    hybridInfo.ghostCurrent.push_back(state.J.name());
     hybridInfo.ghostBulkVelocity.push_back(hybridInfo.modelIonBulkVelocity);
 
     auto transform_ = [](auto& ions, auto& inserter) {
