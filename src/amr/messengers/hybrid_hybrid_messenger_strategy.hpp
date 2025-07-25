@@ -186,12 +186,6 @@ namespace amr
             // Balgo.registerRefine(*by_id, *by_id, *by_id, BfieldRefineOp_, yVariableFillPattern);
             // Balgo.registerRefine(*bz_id, *bz_id, *bz_id, BfieldRefineOp_, zVariableFillPattern);
 
-            BalgoNode.registerRefine(*b_id, *b_id, *b_id, BfieldNodeRefineOp_,
-                                     xVariableFillPattern);
-            // BalgoNode.registerRefine(*by_id, *by_id, *by_id, BfieldNodeRefineOp_,
-            //                          yVariableFillPattern);
-            // BalgoNode.registerRefine(*bz_id, *bz_id, *bz_id, BfieldNodeRefineOp_,
-            //                          zVariableFillPattern);
             auto ex_id = resourcesManager_->getID(hybridInfo->modelElectric);
             auto ey_id = resourcesManager_->getID(hybridInfo->modelElectric);
             auto ez_id = resourcesManager_->getID(hybridInfo->modelElectric);
@@ -741,23 +735,14 @@ namespace amr
         }
 
     private:
-        auto makeKeys(auto const& vecFieldNames)
-        {
-            std::vector<std::string> keys;
-            std::transform(std::begin(vecFieldNames), std::end(vecFieldNames),
-                           std::back_inserter(keys), [](auto const& d) { return d.vecName; });
-            return keys;
-        };
-
         void registerGhostComms_(std::unique_ptr<HybridMessengerInfo> const& info)
         {
             elecGhostsRefiners_.addStaticRefiners(info->ghostElectric, EfieldRefineOp_,
-                                                  makeKeys(info->ghostElectric),
-                                                  defaultFieldFillPattern);
+                                                  info->ghostElectric, defaultFieldFillPattern);
 
             currentGhostsRefiners_.addTimeRefiners(info->ghostCurrent, info->modelCurrent,
-                                                   core::VecFieldNames{Jold_}, EfieldRefineOp_,
-                                                   fieldTimeOp_, defaultFieldFillPattern);
+                                                   Jold_.name(), EfieldRefineOp_, fieldTimeOp_,
+                                                   defaultFieldFillPattern);
 
             rhoGhostsRefiners_.addTimeRefiner(info->modelIonDensity, info->modelIonDensity,
                                               NiOld_.name(), fieldRefineOp_, fieldTimeOp_,
@@ -798,10 +783,9 @@ namespace amr
 
             for (auto const& vecfield : info->ghostFlux)
             {
-                auto pop_flux_vec = std::vector<core::VecFieldNames>{vecfield};
                 popFluxBorderSumRefiners_.emplace_back(resourcesManager_)
                     .addStaticRefiner(
-                        core::VecFieldNames{sumVec_}, vecfield, nullptr, sumVec_.name(),
+                        sumVec_.name(), vecfield, nullptr, sumVec_.name(),
                         std::make_shared<FieldGhostInterpOverlapFillPattern<GridLayoutT>>());
             }
 

@@ -176,7 +176,7 @@ void HybridModel<GridLayoutT, Electromag, Ions, Electrons, AMR_Types, Grid_t>::f
 
     for (auto const& pop : state.ions)
     {
-        hybridInfo.ghostFlux.emplace_back(pop.flux());
+        hybridInfo.ghostFlux.emplace_back(pop.flux().name());
         hybridInfo.sumBorderFields.emplace_back(pop.particleDensity().name());
         hybridInfo.sumBorderFields.emplace_back(pop.chargeDensity().name());
     }

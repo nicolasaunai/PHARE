@@ -9,6 +9,7 @@
 #include "amr/resources_manager/amr_utils.hpp"
 
 #include "field_geometry.hpp"
+#include "core/data/field/field_box.hpp"
 
 
 #include <SAMRAI/hier/PatchData.h>
