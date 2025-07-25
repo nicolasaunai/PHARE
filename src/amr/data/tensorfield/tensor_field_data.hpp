@@ -6,10 +6,13 @@
 
 #include "core/logger.hpp"
 #include "core/data/tensorfield/tensorfield.hpp"
+#include "core/hybrid/hybrid_quantities.hpp"
+#include "core/utilities/types.hpp"
 
 
 #include "amr/data/field/field_overlap.hpp"
 #include "amr/data/tensorfield/tensor_field_geometry.hpp"
+#include "amr/data/field/field_geometry.hpp"
 
 #include <SAMRAI/hier/PatchData.h>
 #include <SAMRAI/tbox/MemoryUtilities.h>
@@ -116,26 +119,29 @@ public:
         // quantity_ using the source gridlayout to accomplish that we get the interior box,
         // from the TensorFieldData.
 
-        SAMRAI::hier::Box sourceBox
-            = Geometry::toFieldBox(fieldSource.getGhostBox(), quantity_, fieldSource.gridLayout);
+        auto quantities = core::HybridQuantity::componentsQuantities(quantity_);
+
+        core::for_N<N>([&](auto i) {
+            auto qty        = std::get<i>(quantities);
+            using FGeometry = FieldGeometry<GridLayoutT, decltype(qty)>;
+            SAMRAI::hier::Box sourceBox
+                = FGeometry::toFieldBox(fieldSource.getGhostBox(), qty, fieldSource.gridLayout);
 
 
-        SAMRAI::hier::Box destinationBox
-            = Geometry::toFieldBox(this->getGhostBox(), quantity_, this->gridLayout);
+            SAMRAI::hier::Box destinationBox
+                = FGeometry::toFieldBox(this->getGhostBox(), qty, this->gridLayout);
 
-        // Given the two boxes in correct space we just have to intersect them
-        SAMRAI::hier::Box intersectionBox = sourceBox * destinationBox;
+            // Given the two boxes in correct space we just have to intersect them
+            SAMRAI::hier::Box intersectionBox = sourceBox * destinationBox;
 
-        if (!intersectionBox.empty())
-            for (std::size_t c = 0; c < N; ++c)
-            {
-                auto const& sourceField = fieldSource.grids[c];
-                auto& destinationField  = grids[c];
+            auto const& sourceField = fieldSource.grids[i];
+            auto& destinationField  = grids[i];
 
+            if (!intersectionBox.empty())
                 // We can copy field from the source to the destination on the correct region
                 copy_(intersectionBox, sourceBox, destinationBox, fieldSource, sourceField,
                       destinationField);
-            }
+        });
     }
 
 
@@ -219,6 +225,8 @@ public:
 
         auto& fieldOverlap = dynamic_cast<FieldOverlap const&>(overlap);
 
+        auto quantities = core::HybridQuantity::componentsQuantities(quantity_);
+
         SAMRAI::hier::Transformation const& transformation = fieldOverlap.getTransformation();
         if (transformation.getRotation() == SAMRAI::hier::Transformation::NO_ROTATE)
         {
@@ -226,11 +234,15 @@ public:
                 = fieldOverlap.getDestinationBoxContainer();
             for (auto const& box : boxContainer)
             {
-                for (std::size_t c = 0; c < N; ++c)
-                {
-                    auto const& source = grids[c];
+                core::for_N<N>([&](auto i) {
+                    auto const& source = grids[i];
+
+                    // note the field box is based on the centering of that
+                    // particular component of the tensorfield
+                    auto qty        = std::get<i>(quantities);
+                    using FGeometry = FieldGeometry<GridLayoutT, decltype(qty)>;
                     SAMRAI::hier::Box sourceBox
-                        = Geometry::toFieldBox(getGhostBox(), quantity_, gridLayout);
+                        = FGeometry::toFieldBox(getGhostBox(), qty, gridLayout);
 
                     SAMRAI::hier::Box packBox{box};
 
@@ -242,13 +254,13 @@ public:
                     packBox = packBox * sourceBox;
 
                     internals_.packImpl(buffer, source, packBox, sourceBox);
-                }
+                });
             }
-        }
-        // throw, we don't do rotations in phare....
+            // throw, we don't do rotations in phare....
 
-        // Once we have fill the buffer, we send it on the stream
-        stream.pack(buffer.data(), buffer.size());
+            // Once we have fill the buffer, we send it on the stream
+            stream.pack(buffer.data(), buffer.size());
+        }
     }
 
 
@@ -273,6 +285,7 @@ public:
 
         // We flush a portion of the stream on the buffer.
         stream.unpack(buffer.data(), expectedSize);
+        auto quantities = core::HybridQuantity::componentsQuantities(quantity_);
 
         SAMRAI::hier::Transformation const& transformation = fieldOverlap.getTransformation();
         if (transformation.getRotation() == SAMRAI::hier::Transformation::NO_ROTATE)
@@ -287,18 +300,22 @@ public:
                 // For unpackStream, there is no transformation needed, since all the box
                 // are on the destination space
 
-                for (std::size_t c = 0; c < N; ++c)
-                {
-                    auto& source = grids[c];
+                core::for_N<N>([&](auto i) {
+                    auto& source = grids[i];
+
+                    auto qty        = std::get<i>(quantities);
+                    using FGeometry = FieldGeometry<GridLayoutT, decltype(qty)>;
+                    // note the field box is based on the centering of that
+                    // particular component of the tensorfield
                     SAMRAI::hier::Box destination
-                        = Geometry::toFieldBox(getGhostBox(), quantity_, gridLayout);
+                        = FGeometry::toFieldBox(getGhostBox(), qty, gridLayout);
 
 
                     SAMRAI::hier::Box packBox{box * destination};
 
 
                     internals_.unpackImpl(seek, buffer, source, packBox, destination);
-                }
+                });
             }
         }
     }
