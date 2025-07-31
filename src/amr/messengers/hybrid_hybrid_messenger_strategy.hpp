@@ -180,11 +180,12 @@ namespace amr
 
             magneticRefinePatchStrategy_.registerIDs(*b_id);
 
-            Balgo.registerRefine(*b_id, *b_id, *b_id, BfieldRefineOp_,
-                                 defaultTensorFieldFillPattern);
+            BalgoPatchGhost.registerRefine(*b_id, *b_id, *b_id, BfieldRefineOp_,
+                                 nonOverwriteInteriorTFfillPattern);
+
 
             BregridAlgo.registerRefine(*b_id, *b_id, *b_id, BfieldRegridOp_,
-                                       defaultTensorFieldFillPattern);
+                                       overwriteInteriorTFfillPattern);
 
             auto e_id = resourcesManager_->getID(hybridInfo->modelElectric);
 
@@ -194,8 +195,8 @@ namespace amr
                     "HybridHybridMessengerStrategy: missing electric field variable IDs");
             }
 
-            Ealgo.registerRefine(*e_id, *e_id, *e_id, EfieldRefineOp_,
-                                 defaultTensorFieldFillPattern);
+            EalgoPatchGhost.registerRefine(*e_id, *e_id, *e_id, EfieldRefineOp_,
+                                 nonOverwriteInteriorTFfillPattern);
 
             registerGhostComms_(hybridInfo);
             registerInitComms(hybridInfo);
@@ -216,9 +217,9 @@ namespace amr
 
 
             magPatchGhostsRefineSchedules[levelNumber]
-                = Balgo.createSchedule(level, &magneticRefinePatchStrategy_);
+                = BalgoPatchGhost.createSchedule(level, &magneticRefinePatchStrategy_);
 
-            elecPatchGhostsRefineSchedules[levelNumber] = Ealgo.createSchedule(level);
+            elecPatchGhostsRefineSchedules[levelNumber] = EalgoPatchGhost.createSchedule(level);
 
             elecGhostsRefiners_.registerLevel(hierarchy, level);
             currentGhostsRefiners_.registerLevel(hierarchy, level);
@@ -238,7 +239,7 @@ namespace amr
             if (levelNumber != rootLevelNumber)
             {
                 // those are for refinement
-                magInitRefineSchedules[levelNumber] = Balgo.createSchedule(
+                magInitRefineSchedules[levelNumber] = BalgoInit.createSchedule(
                     level, nullptr, levelNumber - 1, hierarchy, &magneticRefinePatchStrategy_);
 
 
@@ -268,9 +269,6 @@ namespace amr
             auto& hybridModel = dynamic_cast<HybridModel&>(model);
             auto level        = hierarchy->getPatchLevel(levelNumber);
 
-            std::cout << "I am fucking regriding level " << levelNumber << " with oldLevel "
-                      << (oldLevel ? std::to_string(oldLevel->getLevelNumber()) : "null")
-                      << " at time " << std::setprecision(16) << initDataTime << "\n";
             bool const isRegriddingL0 = levelNumber == 0 and oldLevel;
 
             // Jx not used in 1D ampere and construct-init to NaN
@@ -395,7 +393,6 @@ namespace amr
         void fillElectricGhosts(VecFieldT& E, level_t const& level, double const fillTime) override
         {
             PHARE_LOG_SCOPE(3, "HybridHybridMessengerStrategy::fillElectricGhosts");
-            std::cout << "FILLING ELECTRIC GHOSTS\n";
 
             setNaNsOnVecfieldGhosts(E, level);
             elecGhostsRefiners_.fill(E, level.getLevelNumber(), fillTime);
@@ -750,11 +747,11 @@ namespace amr
         {
             elecGhostsRefiners_.addStaticRefiners(info->ghostElectric, EfieldRefineOp_,
                                                   info->ghostElectric,
-                                                  defaultTensorFieldFillPattern);
+                                                  nonOverwriteInteriorTFfillPattern);
 
             currentGhostsRefiners_.addTimeRefiners(info->ghostCurrent, info->modelCurrent,
                                                    Jold_.name(), EfieldRefineOp_, vecFieldTimeOp_,
-                                                   defaultTensorFieldFillPattern);
+                                                   nonOverwriteInteriorTFfillPattern);
 
             rhoGhostsRefiners_.addTimeRefiner(info->modelIonDensity, info->modelIonDensity,
                                               NiOld_.name(), fieldRefineOp_, fieldTimeOp_,
@@ -763,7 +760,7 @@ namespace amr
 
             velGhostsRefiners_.addTimeRefiners(info->ghostBulkVelocity, info->modelIonBulkVelocity,
                                                ViOld_.name(), vecFieldRefineOp_, vecFieldTimeOp_,
-                                               defaultTensorFieldFillPattern);
+                                               nonOverwriteInteriorTFfillPattern);
         }
 
 
@@ -771,6 +768,15 @@ namespace amr
 
         void registerInitComms(std::unique_ptr<HybridMessengerInfo> const& info)
         {
+
+            auto b_id = resourcesManager_->getID(info->modelMagnetic);
+            BalgoInit.registerRefine(*b_id, *b_id, *b_id, BfieldRefineOp_,
+                                 overwriteInteriorTFfillPattern);
+
+            // no fill pattern given for this init
+            // will use boxgeometryvariable fillpattern, itself using the 
+            // gield geometry with overwrit_interior true from SAMRAI
+            // we could set the overwriteInteriorTFfillPattern it would be the same
             electricInitRefiners_.addStaticRefiners(info->initElectric, EfieldRefineOp_,
                                                     info->initElectric);
 
@@ -966,9 +972,10 @@ namespace amr
         InitRefinerPool electricInitRefiners_{resourcesManager_};
 
 
-        SAMRAI::xfer::RefineAlgorithm Balgo;
+        SAMRAI::xfer::RefineAlgorithm BalgoPatchGhost;
+        SAMRAI::xfer::RefineAlgorithm BalgoInit;
         SAMRAI::xfer::RefineAlgorithm BregridAlgo;
-        SAMRAI::xfer::RefineAlgorithm Ealgo;
+        SAMRAI::xfer::RefineAlgorithm EalgoPatchGhost;
         std::map<int, std::shared_ptr<SAMRAI::xfer::RefineSchedule>> magInitRefineSchedules;
         std::map<int, std::shared_ptr<SAMRAI::xfer::RefineSchedule>> magPatchGhostsRefineSchedules;
         std::map<int, std::shared_ptr<SAMRAI::xfer::RefineSchedule>> elecPatchGhostsRefineSchedules;
@@ -1023,8 +1030,11 @@ namespace amr
         std::shared_ptr<FieldFillPattern_t> defaultFieldFillPattern
             = std::make_shared<FieldFillPattern<dimension>>(); // stateless (mostly)
 
-        std::shared_ptr<TensorFieldFillPattern_t> defaultTensorFieldFillPattern
+        std::shared_ptr<TensorFieldFillPattern_t> nonOverwriteInteriorTFfillPattern
             = std::make_shared<TensorFieldFillPattern<dimension /*, rank=1*/>>();
+
+        std::shared_ptr<TensorFieldFillPattern_t> overwriteInteriorTFfillPattern
+            = std::make_shared<TensorFieldFillPattern<dimension /*, rank=1*/>>(/*overwrite_interior=*/true);
 
         std::shared_ptr<TimeInterpolateOperator> fieldTimeOp_{std::make_shared<FieldTimeInterp>()};
         std::shared_ptr<TimeInterpolateOperator> vecFieldTimeOp_{
