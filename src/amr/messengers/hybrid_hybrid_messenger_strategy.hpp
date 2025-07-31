@@ -2,6 +2,7 @@
 #define PHARE_HYBRID_HYBRID_MESSENGER_STRATEGY_HPP
 
 #include "amr/data/field/refine/magnetic_field_regrider.hpp"
+#include "amr/types/amr_types.hpp"
 #include "core/def.hpp"
 #include "core/logger.hpp"
 #include "core/def/phare_mpi.hpp"
@@ -34,6 +35,7 @@
 #include "amr/resources_manager/amr_utils.hpp"
 
 #include <SAMRAI/hier/IntVector.h>
+#include <SAMRAI/hier/Patch.h>
 #include <SAMRAI/xfer/RefineSchedule.h>
 #include <SAMRAI/xfer/RefineAlgorithm.h>
 #include <SAMRAI/hier/CoarseFineBoundary.h>
@@ -60,6 +62,11 @@ namespace amr
     template<typename HybridModel, typename RefinementParams>
     class HybridHybridMessengerStrategy : public HybridMessengerStrategy<HybridModel>
     {
+        using amr_types   = PHARE::amr::SAMRAI_Types;
+        using level_t     = amr_types::level_t;
+        using patch_t     = amr_types::patch_t;
+        using hierarchy_t = amr_types::hierarchy_t;
+
         using GridT             = HybridModel::grid_type;
         using IonsT             = HybridModel::ions_type;
         using ElectromagT       = HybridModel::electromag_type;
@@ -137,7 +144,7 @@ namespace amr
          * @brief allocate the messenger strategy internal variables to the model
          * resourceManager
          */
-        void allocate(SAMRAI::hier::Patch& patch, double const allocateTime) const override
+        void allocate(patch_t& patch, double const allocateTime) const override
         {
             resourcesManager_->allocate(Jold_, patch, allocateTime);
             resourcesManager_->allocate(NiOld_, patch, allocateTime);
@@ -201,7 +208,7 @@ namespace amr
          * @brief all RefinerPool must be notified the level levelNumber now exist.
          * not doing so will result in communication to/from that level being impossible
          */
-        void registerLevel(std::shared_ptr<SAMRAI::hier::PatchHierarchy> const& hierarchy,
+        void registerLevel(std::shared_ptr<hierarchy_t> const& hierarchy,
                            int const levelNumber) override
         {
             auto const level = hierarchy->getPatchLevel(levelNumber);
@@ -254,10 +261,9 @@ namespace amr
          * @brief regrid performs the regriding communications for Hybrid to Hybrid messengers
          , all quantities that are in initialization refiners need to be regridded
          */
-        void regrid(std::shared_ptr<SAMRAI::hier::PatchHierarchy> const& hierarchy,
-                    int const levelNumber,
-                    std::shared_ptr<SAMRAI::hier::PatchLevel> const& oldLevel,
-                    IPhysicalModel& model, double const initDataTime) override
+        void regrid(std::shared_ptr<hierarchy_t> const& hierarchy, int const levelNumber,
+                    std::shared_ptr<level_t> const& oldLevel, IPhysicalModel& model,
+                    double const initDataTime) override
         {
             auto& hybridModel = dynamic_cast<HybridModel&>(model);
             auto level        = hierarchy->getPatchLevel(levelNumber);
@@ -343,8 +349,7 @@ namespace amr
          * @brief initLevel is used to initialize hybrid data on the level levelNumer at
          * time initDataTime from hybrid coarser data.
          */
-        void initLevel(IPhysicalModel& model, SAMRAI::hier::PatchLevel& level,
-                       double const initDataTime) override
+        void initLevel(IPhysicalModel& model, level_t& level, double const initDataTime) override
         {
             auto levelNumber = level.getLevelNumber();
 
@@ -387,8 +392,7 @@ namespace amr
 
 
 
-        void fillElectricGhosts(VecFieldT& E, SAMRAI::hier::PatchLevel const& level,
-                                double const fillTime) override
+        void fillElectricGhosts(VecFieldT& E, level_t const& level, double const fillTime) override
         {
             PHARE_LOG_SCOPE(3, "HybridHybridMessengerStrategy::fillElectricGhosts");
             std::cout << "FILLING ELECTRIC GHOSTS\n";
@@ -400,8 +404,7 @@ namespace amr
 
 
 
-        void fillCurrentGhosts(VecFieldT& J, SAMRAI::hier::PatchLevel const& level,
-                               double const fillTime) override
+        void fillCurrentGhosts(VecFieldT& J, level_t const& level, double const fillTime) override
         {
             PHARE_LOG_SCOPE(3, "HybridHybridMessengerStrategy::fillCurrentGhosts");
             setNaNsOnVecfieldGhosts(J, level);
@@ -416,8 +419,7 @@ namespace amr
          * neighbor patches of the same level. Before doing that, it empties the array for
          * all populations
          */
-        void fillIonGhostParticles(IonsT& ions, SAMRAI::hier::PatchLevel& level,
-                                   double const fillTime) override
+        void fillIonGhostParticles(IonsT& ions, level_t& level, double const fillTime) override
         {
             PHARE_LOG_SCOPE(1, "HybridHybridMessengerStrategy::fillIonGhostParticles");
 
@@ -430,8 +432,7 @@ namespace amr
 
 
 
-        void fillFluxBorders(IonsT& ions, SAMRAI::hier::PatchLevel& level,
-                             double const fillTime) override
+        void fillFluxBorders(IonsT& ions, level_t& level, double const fillTime) override
         {
             auto constexpr N = core::detail::tensor_field_dim_from_rank<1>();
             using value_type = FieldT::value_type;
@@ -458,8 +459,7 @@ namespace amr
             }
         }
 
-        void fillDensityBorders(IonsT& ions, SAMRAI::hier::PatchLevel& level,
-                                double const fillTime) override
+        void fillDensityBorders(IonsT& ions, level_t& level, double const fillTime) override
         {
             using value_type = FieldT::value_type;
 
@@ -504,7 +504,7 @@ namespace amr
          * of level ghost [old,new] particles for all populations, linear time interpolation
          * is used to get the contribution of old/new particles
          */
-        void fillIonPopMomentGhosts(IonsT& ions, SAMRAI::hier::PatchLevel& level,
+        void fillIonPopMomentGhosts(IonsT& ions, level_t& level,
                                     double const afterPushTime) override
         {
             PHARE_LOG_SCOPE(1, "HybridHybridMessengerStrategy::fillIonPopMomentGhosts");
@@ -553,7 +553,7 @@ namespace amr
          * calculated from particles Note : the ghost schedule only fills the total density
          * and bulk velocity and NOT population densities and fluxes. These partial
          * densities and fluxes are thus not available on ANY ghost node.*/
-        virtual void fillIonMomentGhosts(IonsT& ions, SAMRAI::hier::PatchLevel& level,
+        virtual void fillIonMomentGhosts(IonsT& ions, level_t& level,
                                          double const afterPushTime) override
         {
             PHARE_LOG_SCOPE(3, "HybridHybridMessengerStrategy::fillIonMomentGhosts");
@@ -575,10 +575,9 @@ namespace amr
          * the level is the root level because the root level cannot get levelGhost from
          * next coarser (it has none).
          */
-        void firstStep(IPhysicalModel& /*model*/, SAMRAI::hier::PatchLevel& level,
-                       std::shared_ptr<SAMRAI::hier::PatchHierarchy> const& /*hierarchy*/,
-                       double const currentTime, double const prevCoarserTime,
-                       double const newCoarserTime) override
+        void firstStep(IPhysicalModel& /*model*/, level_t& level,
+                       std::shared_ptr<hierarchy_t> const& /*hierarchy*/, double const currentTime,
+                       double const prevCoarserTime, double const newCoarserTime) override
         {
             PHARE_LOG_SCOPE(3, "HybridHybridMessengerStrategy::firstStep");
 
@@ -611,7 +610,7 @@ namespace amr
          * firstStep of the next substepping cycle. the new CoarseToFineOld content is then
          * copied to levelGhostParticles so that they can be pushed during the next subcycle
          */
-        void lastStep(IPhysicalModel& model, SAMRAI::hier::PatchLevel& level) override
+        void lastStep(IPhysicalModel& model, level_t& level) override
         {
             if (level.getLevelNumber() == 0)
                 return;
@@ -649,8 +648,7 @@ namespace amr
          * because the t=n Vi,Ni,J fields of previous next coarser step will be in the
          * messenger.
          */
-        void prepareStep(IPhysicalModel& model, SAMRAI::hier::PatchLevel& level,
-                         double currentTime) override
+        void prepareStep(IPhysicalModel& model, level_t& level, double currentTime) override
         {
             PHARE_LOG_SCOPE(3, "HybridHybridMessengerStrategy::prepareStep");
 
@@ -678,7 +676,7 @@ namespace amr
 
 
 
-        void fillRootGhosts(IPhysicalModel& model, SAMRAI::hier::PatchLevel& level,
+        void fillRootGhosts(IPhysicalModel& model, level_t& level,
                             double const initDataTime) override
         {
             auto levelNumber = level.getLevelNumber();
@@ -705,7 +703,7 @@ namespace amr
 
 
 
-        void synchronize(SAMRAI::hier::PatchLevel& level) override
+        void synchronize(level_t& level) override
         {
             PHARE_LOG_SCOPE(3, "HybridHybridMessengerStrategy::synchronize");
 
@@ -726,8 +724,7 @@ namespace amr
         // MPI process boundaries. then regular refiner fill are called, which fill only
         // pure ghost nodes. note also that moments are not filled on border nodes since
         // already OK from particle deposition
-        void postSynchronize(IPhysicalModel& model, SAMRAI::hier::PatchLevel& level,
-                             double const time) override
+        void postSynchronize(IPhysicalModel& model, level_t& level, double const time) override
         {
             auto levelNumber  = level.getLevelNumber();
             auto& hybridModel = static_cast<HybridModel&>(model);
@@ -833,7 +830,7 @@ namespace amr
 
 
 
-        void copyLevelGhostOldToPushable_(SAMRAI::hier::PatchLevel& level, IPhysicalModel& model)
+        void copyLevelGhostOldToPushable_(level_t& level, IPhysicalModel& model)
         {
             auto& hybridModel = static_cast<HybridModel&>(model);
             for (auto& patch : level)
@@ -862,10 +859,10 @@ namespace amr
 
 
 
-        void magneticRegriding_(std::shared_ptr<SAMRAI::hier::PatchHierarchy> const& hierarchy,
-                                std::shared_ptr<SAMRAI::hier::PatchLevel> const& level,
-                                std::shared_ptr<SAMRAI::hier::PatchLevel> const& oldLevel,
-                                HybridModel& hybridModel, double const initDataTime)
+        void magneticRegriding_(std::shared_ptr<hierarchy_t> const& hierarchy,
+                                std::shared_ptr<level_t> const& level,
+                                std::shared_ptr<level_t> const& oldLevel, HybridModel& hybridModel,
+                                double const initDataTime)
         {
             // is this setup to nan actually needed?
             for (auto& patch : *level)
@@ -903,50 +900,45 @@ namespace amr
          * This is needed when the schedule copy is done before refinement
          * as a result of FieldVariable::fineBoundaryRepresentsVariable=false
          */
-        void setNaNsOnFieldGhosts(FieldT& field, SAMRAI::hier::PatchLevel const& level)
+        void setNaNsOnFieldGhosts(FieldT& field, patch_t const& patch)
         {
-            auto qty               = field.physicalQuantity();
-            using qty_t            = decltype(qty);
+            auto const qty         = field.physicalQuantity();
+            using qty_t            = std::decay_t<decltype(qty)>;
             using field_geometry_t = FieldGeometry<GridLayoutT, qty_t>;
 
-            for (auto& patch : level)
-            {
-                auto box    = patch->getBox();
-                auto _      = resourcesManager_->setOnPatch(*patch, field);
-                auto layout = layoutFromPatch<GridLayoutT>(*patch);
+            auto const box    = patch.getBox();
+            auto const layout = layoutFromPatch<GridLayoutT>(patch);
 
-                // we need to remove the box from the ghost box
-                // to use SAMRAI::removeIntersections we do some conversions to
-                // samrai box.
-                // not gbox is a fieldBox (thanks to the layout)
+            // we need to remove the box from the ghost box
+            // to use SAMRAI::removeIntersections we do some conversions to
+            // samrai box.
+            // not gbox is a fieldBox (thanks to the layout)
 
-                auto gbox  = layout.AMRGhostBoxFor(field.physicalQuantity());
-                auto sgbox = samrai_box_from(gbox);
-                auto fbox  = field_geometry_t::toFieldBox(box, qty, layout);
+            auto const gbox  = layout.AMRGhostBoxFor(field.physicalQuantity());
+            auto const sgbox = samrai_box_from(gbox);
+            auto const fbox  = field_geometry_t::toFieldBox(box, qty, layout);
 
-                // we have field samrai boxes so we can now remove one from the other
-                SAMRAI::hier::BoxContainer ghostLayerBoxes{};
-                ghostLayerBoxes.removeIntersections(sgbox, fbox);
+            // we have field samrai boxes so we can now remove one from the other
+            SAMRAI::hier::BoxContainer ghostLayerBoxes{};
+            ghostLayerBoxes.removeIntersections(sgbox, fbox);
 
-                // and now finally set the NaNs on the ghost boxes
-                for (auto& gb : ghostLayerBoxes)
-                {
-                    auto pgb = layout.AMRToLocal(phare_box_from<dimension>(gb));
-                    for (auto& index : pgb)
-                    {
-                        field(index)
-                            = std::numeric_limits<typename VecFieldT::value_type>::quiet_NaN();
-                    }
-                }
-            }
+            // and now finally set the NaNs on the ghost boxes
+            for (auto const& gb : ghostLayerBoxes)
+                for (auto const& index : layout.AMRToLocal(phare_box_from<dimension>(gb)))
+                    field(index) = std::numeric_limits<typename VecFieldT::value_type>::quiet_NaN();
         }
 
-        void setNaNsOnVecfieldGhosts(VecFieldT& vf, SAMRAI::hier::PatchLevel const& level)
+        void setNaNsOnFieldGhosts(FieldT& field, level_t const& level)
         {
-            for (auto& component : vf)
-            {
-                setNaNsOnFieldGhosts(component, level);
-            }
+            for (auto& patch : resourcesManager_->enumerate(level, field))
+                setNaNsOnFieldGhosts(field, *patch);
+        }
+
+        void setNaNsOnVecfieldGhosts(VecFieldT& vf, level_t const& level)
+        {
+            for (auto& patch : resourcesManager_->enumerate(level, vf))
+                for (auto& component : vf)
+                    setNaNsOnFieldGhosts(component, *patch);
         }
 
 
