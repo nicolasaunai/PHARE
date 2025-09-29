@@ -17,7 +17,9 @@ enum class RefinerType {
     GhostField,
     InitField,
     InitInteriorPart,
+    LevelBorderField,
     LevelBorderParticles,
+    PatchGhostField,
     PatchFieldBorderSum,
     PatchVecFieldBorderSum,
     PatchTensorFieldBorderSum,
@@ -68,6 +70,11 @@ public:
                           algo->createSchedule(level, level->getNextCoarserHierarchyLevelNumber(),
                                                hierarchy),
                           levelNumber);
+            }
+
+            if constexpr (Type == RefinerType::PatchGhostField)
+            {
+                this->add(algo, algo->createSchedule(level), levelNumber);
             }
 
 
@@ -131,6 +138,17 @@ public:
                               level, nullptr, levelNumber - 1, hierarchy),
                           levelNumber);
             }
+
+
+            else if constexpr (Type == RefinerType::LevelBorderField)
+            {
+                this->add(algo,
+                          algo->createSchedule(
+                              std::make_shared<SAMRAI::xfer::PatchLevelBorderFillPattern>(), level,
+                              level->getNextCoarserHierarchyLevelNumber(), hierarchy),
+                          levelNumber);
+            }
+
 
             // here we create a schedule that will refine particles from coarser level and
             // put them into the level coarse to fine boundary. These are the

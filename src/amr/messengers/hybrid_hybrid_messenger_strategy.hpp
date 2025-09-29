@@ -15,6 +15,7 @@
 #include "amr/messengers/messenger_info.hpp"
 #include "amr/resources_manager/amr_utils.hpp"
 #include "amr/data/field/refine/field_refiner.hpp"
+#include "amr/data/field/refine/field_moments_refiner.hpp"
 #include "amr/messengers/hybrid_messenger_info.hpp"
 #include "amr/messengers/hybrid_messenger_strategy.hpp"
 #include "amr/data/field/refine/magnetic_refine_patch_strategy.hpp"
@@ -88,6 +89,8 @@ namespace amr
 
         using DefaultFieldRefineOp    = FieldRefineOp<DefaultFieldRefiner<dimension>>;
         using DefaultVecFieldRefineOp = VecFieldRefineOp<DefaultFieldRefiner<dimension>>;
+        using FieldMomentsRefineOp    = FieldRefineOp<FieldMomentsRefiner<dimension>>;
+        using VecFieldMomentsRefineOp = VecFieldRefineOp<FieldMomentsRefiner<dimension>>;
         using MagneticFieldRefineOp   = VecFieldRefineOp<MagneticFieldRefiner<dimension>>;
         using MagneticFieldRegridOp   = VecFieldRefineOp<MagneticFieldRegrider<dimension>>;
         using ElectricFieldRefineOp   = VecFieldRefineOp<ElectricFieldRefiner<dimension>>;
@@ -170,10 +173,17 @@ namespace amr
 
             magneticRefinePatchStrategy_.registerIDs(b_id);
 
+            // we do not overwrite interior on patch ghost filling. In theory this doesn't matter
+            // much since the only interior values are the outermost layer of faces of the domain,
+            // and should be near equal from one patch to the other.
             BalgoPatchGhost.registerRefine(b_id, b_id, b_id, BfieldRefineOp_,
                                            nonOverwriteInteriorTFfillPattern);
 
 
+            // for regrid, we need to overwrite the interior or else only the new ghosts would be
+            // filled. We also need to use the regrid operator, which checks for nans before filling
+            // the new values, as we do not want to overwrite the copy that was already done for the
+            // faces that were already there before regrid.
             BregridAlgo.registerRefine(b_id, b_id, b_id, BfieldRegridOp_,
                                        overwriteInteriorTFfillPattern);
 
@@ -218,7 +228,7 @@ namespace amr
 
             elecPatchGhostsRefineSchedules[levelNumber] = EalgoPatchGhost.createSchedule(level);
 
-            // technically not needed for finest
+            // technically not needed for finest as refluxing is not done onto it.
             patchGhostRefluxedSchedules[levelNumber] = PatchGhostRefluxedAlgo.createSchedule(level);
 
             elecGhostsRefiners_.registerLevel(hierarchy, level);
@@ -226,6 +236,9 @@ namespace amr
             chargeDensityGhostsRefiners_.registerLevel(hierarchy, level);
             velGhostsRefiners_.registerLevel(hierarchy, level);
             domainGhostPartRefiners_.registerLevel(hierarchy, level);
+
+            chargeDensityPatchGhostsRefiners_.registerLevel(hierarchy, level);
+            velPatchGhostsRefiners_.registerLevel(hierarchy, level);
 
             for (auto& refiner : popFluxBorderSumRefiners_)
                 refiner.registerLevel(hierarchy, level);
@@ -273,14 +286,6 @@ namespace amr
 
             bool const isRegriddingL0 = levelNumber == 0 and oldLevel;
 
-            // Jx not used in 1D ampere and construct-init to NaN
-            // therefore J needs to be set to 0 whenever SAMRAI may construct
-            // J patchdata. This occurs on level init (root or refined)
-            // and here in regriding as well.
-            for (auto& patch : resourcesManager_->enumerate(*level, hybridModel.state.J))
-            {
-                hybridModel.state.J.zero();
-            }
             magneticRegriding_(hierarchy, level, oldLevel, hybridModel, initDataTime);
             electricInitRefiners_.regrid(hierarchy, levelNumber, oldLevel, initDataTime);
             domainParticlesRefiners_.regrid(hierarchy, levelNumber, oldLevel, initDataTime);
@@ -341,11 +346,6 @@ namespace amr
 
             magInitRefineSchedules[levelNumber]->fillData(initDataTime);
             electricInitRefiners_.fill(levelNumber, initDataTime);
-            for (auto& patch : level)
-            {
-                auto _ = resourcesManager_->setOnPatch(*patch, hybridModel.state.J);
-                hybridModel.state.J.zero();
-            }
 
             // no need to call these :
             // magGhostsRefiners_.fill(levelNumber, initDataTime);
@@ -541,8 +541,6 @@ namespace amr
             PHARE_LOG_SCOPE(3, "HybridHybridMessengerStrategy::fillIonMomentGhosts");
             auto& chargeDensity = ions.chargeDensity();
             auto& velocity      = ions.velocity();
-            setNaNsOnFieldGhosts(chargeDensity, level);
-            setNaNsOnVecfieldGhosts(velocity, level);
             chargeDensityGhostsRefiners_.fill(level.getLevelNumber(), afterPushTime);
             velGhostsRefiners_.fill(level.getLevelNumber(), afterPushTime);
         }
@@ -649,7 +647,6 @@ namespace amr
                 auto& J  = hybridModel.state.J;
                 auto& Vi = hybridModel.state.ions.velocity();
                 auto& Ni = hybridModel.state.ions.chargeDensity();
-                auto& E  = hybridModel.state.electromag.E;
 
                 Jold_.copyData(J);
                 ViOld_.copyData(Vi);
@@ -700,7 +697,8 @@ namespace amr
             ionBulkVelSynchronizers_.sync(levelNumber);
         }
 
-
+        // this function coarsens the fluxSum onto the corresponding coarser fluxes (E in hybrid),
+        // and fills the patch ghosts, making it ready for the faraday in the solver.reflux()
         void reflux(int const coarserLevelNumber, int const fineLevelNumber,
                     double const syncTime) override
         {
@@ -724,29 +722,44 @@ namespace amr
 
             // should we keep the filling on electrif ghosts if done in reflux?
             elecGhostsRefiners_.fill(hybridModel.state.electromag.E, levelNumber, time);
-            chargeDensityGhostsRefiners_.fill(levelNumber, time);
-            velGhostsRefiners_.fill(hybridModel.state.ions.velocity(), levelNumber, time);
+            chargeDensityPatchGhostsRefiners_.fill(levelNumber, time);
+            velPatchGhostsRefiners_.fill(hybridModel.state.ions.velocity(), levelNumber, time);
         }
 
     private:
         void registerGhostComms_(std::unique_ptr<HybridMessengerInfo> const& info)
         {
+            // all of the ghost refiners take the nonOverwriteInteriorTFfillPattern as they should
+            // only ever modify the ghost and never the interior domain
             elecGhostsRefiners_.addStaticRefiners(info->ghostElectric, EfieldRefineOp_,
                                                   info->ghostElectric,
                                                   nonOverwriteInteriorTFfillPattern);
 
-            currentGhostsRefiners_.addTimeRefiners(info->ghostCurrent, info->modelCurrent,
-                                                   Jold_.name(), EfieldRefineOp_, vecFieldTimeOp_,
-                                                   nonOverwriteInteriorTFfillPattern);
+            // static refinement for J  because it is a temporary, so keeping its
+            // state updated after each regrid is not a priority. However if we do not correctly
+            // refine on regrid, the post regrid state is not up to date (in our case it will be nan
+            // since we nan-initialise) and thus is is better to rely on static refinement, which
+            // uses the state after computation of ampere.
+            currentGhostsRefiners_.addStaticRefiners(info->ghostCurrent, EfieldRefineOp_,
+                                                     info->ghostCurrent,
+                                                     nonOverwriteInteriorTFfillPattern);
 
             chargeDensityGhostsRefiners_.addTimeRefiner(
-                info->modelIonDensity, info->modelIonDensity, NiOld_.name(), fieldRefineOp_,
-                fieldTimeOp_, info->modelIonDensity, defaultFieldFillPattern);
+                info->modelIonDensity, info->modelIonDensity, NiOld_.name(), fieldMomentsRefineOp_,
+                fieldTimeOp_, info->modelIonDensity, overwriteInteriorFieldFillPattern);
 
 
             velGhostsRefiners_.addTimeRefiners(info->ghostBulkVelocity, info->modelIonBulkVelocity,
-                                               ViOld_.name(), vecFieldRefineOp_, vecFieldTimeOp_,
-                                               nonOverwriteInteriorTFfillPattern);
+                                               ViOld_.name(), vecFieldMomentsRefineOp_,
+                                               vecFieldTimeOp_, overwriteInteriorTFfillPattern);
+
+            chargeDensityPatchGhostsRefiners_.addTimeRefiner(
+                info->modelIonDensity, info->modelIonDensity, NiOld_.name(), fieldMomentsRefineOp_,
+                fieldTimeOp_, info->modelIonDensity, defaultFieldFillPattern);
+
+            velPatchGhostsRefiners_.addTimeRefiners(
+                info->ghostBulkVelocity, info->modelIonBulkVelocity, ViOld_.name(),
+                vecFieldMomentsRefineOp_, vecFieldTimeOp_, nonOverwriteInteriorTFfillPattern);
         }
 
 
@@ -939,7 +952,9 @@ namespace amr
         using InitRefinerPool             = RefinerPool<rm_t, RefinerType::InitField>;
         using GhostRefinerPool            = RefinerPool<rm_t, RefinerType::GhostField>;
         using InitDomPartRefinerPool      = RefinerPool<rm_t, RefinerType::InitInteriorPart>;
+        using LevelBorderFieldRefinerPool = RefinerPool<rm_t, RefinerType::LevelBorderField>;
         using DomainGhostPartRefinerPool  = RefinerPool<rm_t, RefinerType::ExteriorGhostParticles>;
+        using PatchGhostRefinerPool       = RefinerPool<rm_t, RefinerType::PatchGhostField>;
         using FieldGhostSumRefinerPool    = RefinerPool<rm_t, RefinerType::PatchFieldBorderSum>;
         using VecFieldGhostSumRefinerPool = RefinerPool<rm_t, RefinerType::PatchVecFieldBorderSum>;
         using FieldFillPattern_t          = FieldFillPattern<dimension>;
@@ -976,8 +991,11 @@ namespace amr
         // these refiners are used to fill ghost nodes, and therefore, owing to
         // the GhostField tag, will only assign pure ghost nodes. Border nodes will
         // be overwritten only on level borders, which does not seem to be an issue.
-        GhostRefinerPool chargeDensityGhostsRefiners_{resourcesManager_};
-        GhostRefinerPool velGhostsRefiners_{resourcesManager_};
+        LevelBorderFieldRefinerPool chargeDensityGhostsRefiners_{resourcesManager_};
+        LevelBorderFieldRefinerPool velGhostsRefiners_{resourcesManager_};
+
+        PatchGhostRefinerPool chargeDensityPatchGhostsRefiners_{resourcesManager_};
+        PatchGhostRefinerPool velPatchGhostsRefiners_{resourcesManager_};
 
         // pool of refiners for interior particles of each population
         // and the associated refinement operator
@@ -1008,11 +1026,18 @@ namespace amr
         RefOp_ptr fieldRefineOp_{std::make_shared<DefaultFieldRefineOp>()};
         RefOp_ptr vecFieldRefineOp_{std::make_shared<DefaultVecFieldRefineOp>()};
 
+        RefOp_ptr fieldMomentsRefineOp_{std::make_shared<FieldMomentsRefineOp>()};
+        RefOp_ptr vecFieldMomentsRefineOp_{std::make_shared<VecFieldMomentsRefineOp>()};
+
         RefOp_ptr BfieldRefineOp_{std::make_shared<MagneticFieldRefineOp>()};
         RefOp_ptr BfieldRegridOp_{std::make_shared<MagneticFieldRegridOp>()};
         RefOp_ptr EfieldRefineOp_{std::make_shared<ElectricFieldRefineOp>()};
         std::shared_ptr<FieldFillPattern_t> defaultFieldFillPattern
             = std::make_shared<FieldFillPattern<dimension>>(); // stateless (mostly)
+
+        std::shared_ptr<FieldFillPattern_t> overwriteInteriorFieldFillPattern
+            = std::make_shared<FieldFillPattern<dimension>>(
+                /*overwrite_interior=*/true); // stateless (mostly)
 
         std::shared_ptr<TensorFieldFillPattern_t> nonOverwriteInteriorTFfillPattern
             = std::make_shared<TensorFieldFillPattern<dimension /*, rank=1*/>>();
