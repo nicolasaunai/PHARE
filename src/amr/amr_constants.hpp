@@ -8,7 +8,7 @@ namespace PHARE::amr
 
 static std::size_t constexpr refinementRatio = 2;
 
-static std::size_t constexpr MAX_LEVEL = 10;
+static std::size_t constexpr MAX_LEVEL = 10; // ARBITRARY
 
 } // namespace PHARE::amr
 

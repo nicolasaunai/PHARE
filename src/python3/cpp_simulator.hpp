@@ -163,7 +163,8 @@ void declare_sim(py::module& m)
 template<typename dim, typename interp, typename nbRefinedPart> // possibly TORM on 3d PR
 constexpr bool valid_simulator()
 {
-    return dim{}() < 3;
+    // this is here for dev reasons, to limit permutations, to decrease build time
+    return true; // dim{}() == 3 and interp{}() == 1;
 }
 
 template<typename Dimension, typename InterpOrder, typename... NbRefinedParts>
