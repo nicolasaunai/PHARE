@@ -17,6 +17,8 @@
 #include "amr/solvers/solver_ppc_model_view.hpp"
 #include "amr/physical_models/physical_model.hpp"
 #include "amr/messengers/hybrid_messenger_info.hpp"
+#include "amr/debugod.hpp"
+#include "phare_simulator_options.hpp"
 
 #include <SAMRAI/hier/Patch.h>
 #include "SAMRAI/hier/PatchLevel.h"
@@ -405,6 +407,21 @@ void SolverPPC<HybridModel, AMR_Types>::predictor1_(level_t& level, ModelViews_t
         setTime([](auto& state) -> auto& { return state.J; });
         fromCoarser.fillCurrentGhosts(views.model().state.J, level, newTime);
     }
+    auto& god = amr::DEBUGOD<SimOpts{3, 1}>::INSTANCE();
+    if (god.isActive())
+    {
+        auto& Eavg = electromagAvg_.E;
+        using TF   = std::decay_t<decltype(Eavg)>;
+
+        std::cout << "DEBUGOD: SolverPPC::reflux_ after faraday before ghost "
+                     "filling at level "
+                  << level.getLevelNumber() << "\n";
+        {
+            auto jesus = god.template inspect<TF>({-0.4, 11.31, 0.41}, {0., 11.31, 0.41},
+                                                  std::string("J"), std::string("J_z"));
+            god.print(jesus);
+        }
+    }
 
     {
         PHARE_LOG_SCOPE(3, "SolverPPC::predictor1_.ohm");
@@ -511,10 +528,12 @@ void SolverPPC<HybridModel, AMR_Types>::average_(level_t& level, ModelViews_t& v
     setTime([](auto& state) -> auto& { return state.electromagAvg.B; });
     setTime([](auto& state) -> auto& { return state.electromagAvg.E; });
 
+    std::cout << "BEFORE filling Eavg ghosts at level " << level.getLevelNumber() << "\n";
     // the following will fill E on all edges of all ghost cells, including those
     // on domain border. For level ghosts, electric field will be obtained from
     // next coarser level E average
     fromCoarser.fillElectricGhosts(electromagAvg_.E, level, newTime);
+    std::cout << "AFTER filling Eavg ghosts at level " << level.getLevelNumber() << "\n";
 }
 
 

@@ -17,6 +17,7 @@
 #include "amr/load_balancing/load_balancer_details.hpp"
 #include "amr/load_balancing/load_balancer_manager.hpp"
 #include "amr/load_balancing/load_balancer_estimator_hybrid.hpp"
+#include "amr/debugod.hpp"
 
 #include "diagnostic/diagnostics.hpp"
 
@@ -30,7 +31,6 @@
 
 namespace PHARE
 {
-
 static inline auto const SIM_REPORT_N = core::get_env_as("PHARE_REPORT_SUMMARY", std::size_t{0});
 
 class ISimulator
@@ -159,8 +159,8 @@ private:
                 return std::make_unique<std::ofstream>("/dev/null");
 
             if (log != "CLI")
-                throw std::runtime_error(
-                    "PHARE_LOG invalid type, valid keys are RANK_FILES/DATETIME_FILES/CLI/NULL");
+                throw std::runtime_error("PHARE_LOG invalid type, valid keys are "
+                                         "RANK_FILES/DATETIME_FILES/CLI/NULL");
         }
 
         return nullptr;
@@ -315,10 +315,9 @@ void Simulator<opts>::hybrid_init(initializer::PHAREDict const& dict)
     if (dict["simulation"]["AMR"]["refinement"].contains("tagging"))
     { // Load balancers break with refinement boxes - only tagging supported
         /*
-          P=0000000:Program abort called in file ``/.../SAMRAI/xfer/RefineSchedule.cpp'' at line 369
-          P=0000000:ERROR MESSAGE:
-          P=0000000:RefineSchedule:RefineSchedule error: We are not currently
-          P=0000000:supporting RefineSchedules with the source level finer
+          P=0000000:Program abort called in file ``/.../SAMRAI/xfer/RefineSchedule.cpp'' at line
+          369 P=0000000:ERROR MESSAGE: P=0000000:RefineSchedule:RefineSchedule error: We are not
+          currently P=0000000:supporting RefineSchedules with the source level finer
           P=0000000:than the destination level
         */
         lbm_->addLoadBalancerEstimator(0, maxLevelNumber_ - 1, std::move(lbe_));
@@ -357,6 +356,7 @@ Simulator<opts>::Simulator(PHARE::initializer::PHAREDict const& dict,
     , functors_{functors_setup(dict)}
     , multiphysInteg_{std::make_shared<MultiPhysicsIntegrator>(dict["simulation"], functors_)}
 {
+    PHARE::amr::DEBUGOD<opts>::INSTANCE().setHierarchy(hierarchy_);
     if (!hierarchy_)
         throw std::runtime_error("NO HIERARCHY!");
 

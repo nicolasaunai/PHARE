@@ -113,6 +113,11 @@ public:
             // we compute the intersection with the destination,
             // and then we apply the refine operation on each fine index.
             auto intersectionBox = destFieldBox * box;
+            std::cout << "debug refine box : " << intersectionBox << " from source box "
+                      << sourceFieldBox << " to dest box " << destFieldBox << " for sourceField "
+                      << sourceField.name() << " to destField " << destinationField.name()
+                      << " source patch box " << source.getBox() << " dest patch box "
+                      << destination.getBox() << "\n";
             refine_field(destinationField, sourceField, intersectionBox, refiner);
         }
     }
@@ -200,6 +205,11 @@ public:
                 // we compute the intersection with the destination,
                 // and then we apply the refine operation on each fine index.
                 auto const intersectionBox = destFieldBox * box;
+                std::cout << "debug refine box : " << intersectionBox << " from source box "
+                          << sourceFieldBox << " to dest box " << destFieldBox
+                          << " for sourceField " << sourceFields[c].name() << " to destField "
+                          << destinationFields[c].name() << " source patch box " << source.getBox()
+                          << " dest patch box " << destination.getBox() << "\n";
                 refine_field(destinationFields[c], sourceFields[c], intersectionBox, refiner);
             }
         }

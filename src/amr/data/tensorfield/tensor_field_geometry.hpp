@@ -106,6 +106,7 @@ public:
                      SAMRAI::hier::BoxContainer const& destinationRestrictBoxes
                      = SAMRAI::hier::BoxContainer{}) const final
     {
+        std::cout << "TensorFieldGeometry::calculateOverlap ";
         auto& destinationCast = dynamic_cast<TensorFieldGeometry const&>(destinationGeometry);
         auto& sourceCast      = dynamic_cast<TensorFieldGeometry const&>(sourceGeometry);
 

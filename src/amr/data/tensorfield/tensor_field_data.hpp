@@ -253,7 +253,10 @@ public:
                 // into the destination box space, and that the box in the boxContainer
                 // are in destination space, we have to use the inverseTransform
                 // to get into source space
+
+                std::cout << "packStream box before inverseTransform: " << box << "\n";
                 transformation.inverseTransform(packBox);
+                std::cout << "packStream box after inverseTransform: " << box << "\n";
 
                 auto const finalBox = phare_box_from<dimension>(packBox);
                 core::FieldBox<Grid_t const> src{source, gridLayout, finalBox};
@@ -307,6 +310,7 @@ public:
             {
                 auto& dst_grid = dst_grids[c];
                 auto const box = phare_box_from<dimension>(sambox);
+                std::cout << "unpackStream box : " << box << "\n";
                 core::FieldBox<Grid_t> dst{dst_grid, gridLayout, box};
                 dst.template set_from<Operator>(buffer, seek);
                 seek += box.size();
@@ -412,6 +416,9 @@ private:
                         auto const& source_qty = source.grids[c].physicalQuantity();
                         auto const& dst_qty    = dst.grids[c].physicalQuantity();
 
+                        std::cout << "copy_ box : " << box
+                                  << " source name:  " << source.grids[c].name()
+                                  << " dest.getGhostBox(): " << dst.getGhostBox() << "\n";
                         using SourceQty      = std::decay_t<decltype(source_qty)>;
                         using DestinationQty = std::decay_t<decltype(dst_qty)>;
 

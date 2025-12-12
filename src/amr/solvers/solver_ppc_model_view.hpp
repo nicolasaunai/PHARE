@@ -55,6 +55,8 @@ public:
         assert_equal_sizes(B, J);
         for (std::size_t i = 0; i < B.size(); ++i)
         {
+            std::cout << "AmpereTransformer processing patch " << i << " with box "
+                      << layouts[i]->AMRBox() << "\n";
             auto _ = core::SetLayout(layouts[i], ampere_);
             ampere_(*B[i], *J[i]);
         }

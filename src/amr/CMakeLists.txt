@@ -73,6 +73,7 @@ set( SOURCES_INC
      load_balancing/load_balancer_hybrid_strategy.hpp
      load_balancing/concrete_load_balancer_hybrid_strategy_homogeneous.hpp
      load_balancing/concrete_load_balancer_hybrid_strategy_nppc.hpp
+     debugod.hpp
    )
 set( SOURCES_CPP
      data/field/refine/linear_weighter.cpp

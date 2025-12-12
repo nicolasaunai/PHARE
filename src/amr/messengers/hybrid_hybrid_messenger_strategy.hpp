@@ -219,6 +219,8 @@ namespace amr
         void registerLevel(std::shared_ptr<hierarchy_t> const& hierarchy,
                            int const levelNumber) override
         {
+            std::cout << "HybridHybridMessengerStrategy::registerLevel " << levelNumber
+                      << std::endl;
             auto const level = hierarchy->getPatchLevel(levelNumber);
 
 
@@ -231,7 +233,11 @@ namespace amr
             // technically not needed for finest as refluxing is not done onto it.
             patchGhostRefluxedSchedules[levelNumber] = PatchGhostRefluxedAlgo.createSchedule(level);
 
+            std::cout << "BEFORE electric  ghost refiner registering level " << levelNumber
+                      << std::endl;
             elecGhostsRefiners_.registerLevel(hierarchy, level);
+            std::cout << "AFTER electric  ghost refiner registering level " << levelNumber
+                      << std::endl;
             magGhostsRefiners_.registerLevel(hierarchy, level);
             currentGhostsRefiners_.registerLevel(hierarchy, level);
             // chargeDensityLevelGhostsRefiners_.registerLevel(hierarchy, level);
@@ -287,6 +293,7 @@ namespace amr
                     std::shared_ptr<level_t> const& oldLevel, IPhysicalModel& model,
                     double const initDataTime) override
         {
+            std::cout << "HybridHybridMessengerStrategy::regrid level " << levelNumber << std::endl;
             auto& hybridModel = dynamic_cast<HybridModel&>(model);
             auto level        = hierarchy->getPatchLevel(levelNumber);
 

@@ -247,6 +247,7 @@ namespace amr
             // of the destination box, from the above intersection, which may result
             // in adding multiple boxes into the container.
 
+            std::cout << "fillBox : " << fillBox << std::endl;
 
             // the sourceMask is a restriction of the sourceBox
             // so we need to intersect it with the sourceBox, then to apply a transformation
