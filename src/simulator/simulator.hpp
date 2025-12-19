@@ -23,6 +23,7 @@
 
 #include "restarts/restarts.hpp"
 
+
 #include <vector>
 #include <string>
 
@@ -409,7 +410,10 @@ void Simulator<opts>::initialize()
         if (integrator_ == nullptr)
             throw std::runtime_error("Error - Simulator has no integrator");
 
+
+
         integrator_->initialize();
+
     }
     catch (std::exception const& e)
     {

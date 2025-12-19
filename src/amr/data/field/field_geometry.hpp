@@ -274,6 +274,8 @@ namespace amr
             // let's compute the interesection of them all.
 
             SAMRAI::hier::Box const together(destinationBox * sourceBox * fillField);
+            std::cout << "destinationBox: " << destinationBox << " sourceBox: " << sourceBox
+                      << " fillField: " << fillField << " together: " << together << "\n";
 
             // if the interesection is not empty we either push it into the container
             // if we don't want to fill the interior we remove it from the intersection

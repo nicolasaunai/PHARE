@@ -1,6 +1,7 @@
 #ifndef PHARE_HYBRID_HYBRID_MESSENGER_STRATEGY_HPP
 #define PHARE_HYBRID_HYBRID_MESSENGER_STRATEGY_HPP
 
+#include <unistd.h>
 
 #include "core/def.hpp" // IWYU pragma: keep
 #include "core/logger.hpp"
@@ -213,7 +214,7 @@ namespace amr
 
 
         /**
-         * @brief all RefinerPool must be notified the level levelNumber now exist.
+         * @brief all RefinerPool must be notified the level levelNumber nowfalse exist.
          * not doing so will result in communication to/from that level being impossible
          */
         void registerLevel(std::shared_ptr<hierarchy_t> const& hierarchy,
