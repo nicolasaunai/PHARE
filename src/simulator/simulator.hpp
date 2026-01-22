@@ -66,6 +66,7 @@ public:
 
     bool dump(double timestamp, double timestep) override
     {
+        // restarts are allowed to run without diagnostics so keep separate checks
         if (rMan)
         {
             rMan->dump(timestamp, timestep);
@@ -118,6 +119,7 @@ private:
 
     auto static log_file_name()
     {
+        // honor PHARE_LOG but avoid creating files when logging is disabled
         // ".log" directory is not created here, but in python if PHARE_LOG != "NONE"
         if (auto log = core::get_env("PHARE_LOG"))
         {
