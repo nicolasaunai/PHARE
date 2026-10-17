@@ -72,13 +72,13 @@ public:
     }
 
 private:
-    using _scalar_neumann_condition_type = FieldBoundaryConditionNeumann<field_type, GridLayoutT>;
-    using _scalar_dirichlet_condition_type
+    using scalar_neumann_condition_type = FieldBoundaryConditionNeumann<field_type, GridLayoutT>;
+    using scalar_dirichlet_condition_type
         = FieldBoundaryConditionDirichlet<field_type, GridLayoutT>;
 
-    _scalar_neumann_condition_type scalar_neumann_condition_{};
-    _scalar_dirichlet_condition_type scalar_dirichlet_condition_{0.0,
-                                                                 DirichletExtrapolation::Linear};
+    scalar_neumann_condition_type scalar_neumann_condition_{};
+    scalar_dirichlet_condition_type scalar_dirichlet_condition_{0.0,
+                                                                DirichletExtrapolation::Linear};
 
 }; // class FieldBoundaryConditionSymmetric
 

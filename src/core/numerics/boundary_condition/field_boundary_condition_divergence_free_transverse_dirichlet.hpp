@@ -48,14 +48,14 @@ public:
                                                             DirichletExtrapolation extrapolation)
     {
         for (std::size_t i = 0; i < N; ++i)
-            scalar_dirichlet_conditions_[i] = _scalar_dirichlet_bc_type{value, extrapolation};
+            scalar_dirichlet_conditions_[i] = scalar_dirichlet_bc_type{value, extrapolation};
     }
 
     FieldBoundaryConditionDivergenceFreeTransverseDirichlet(std::array<value_type, N> const& values,
                                                             DirichletExtrapolation extrapolation)
     {
         for (std::size_t i = 0; i < N; ++i)
-            scalar_dirichlet_conditions_[i] = _scalar_dirichlet_bc_type{values[i], extrapolation};
+            scalar_dirichlet_conditions_[i] = scalar_dirichlet_bc_type{values[i], extrapolation};
     }
 
     FieldBoundaryConditionDivergenceFreeTransverseDirichlet(
@@ -105,9 +105,9 @@ public:
     }
 
 private:
-    using _scalar_dirichlet_bc_type = FieldBoundaryConditionDirichlet<field_type, GridLayoutT>;
+    using scalar_dirichlet_bc_type = FieldBoundaryConditionDirichlet<field_type, GridLayoutT>;
 
-    std::array<_scalar_dirichlet_bc_type, N> scalar_dirichlet_conditions_;
+    std::array<scalar_dirichlet_bc_type, N> scalar_dirichlet_conditions_;
 
 }; // class FieldBoundaryConditionDivergenceFreeTransverseDirichlet
 

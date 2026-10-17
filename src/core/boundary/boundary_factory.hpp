@@ -67,7 +67,7 @@ public:
                                     double const gamma = 0.0)
     {
         BoundaryType const type = cppdict::get_value(dict, "type", BoundaryType::None);
-        _model_menu_type const quantities{scalars, vectors};
+        model_menu_type const quantities{scalars, vectors};
 
         // initialize the boundary
         boundary_ptr_type boundary = std::make_unique<boundary_type>(type, location);
@@ -90,7 +90,7 @@ public:
 
 private:
     /** @brief Utility struct to group scalar and vector quantities together */
-    struct _model_menu_type
+    struct model_menu_type
     {
         scalar_quantity_list_type const& scalars;
         vector_quantity_list_type const& vectors;
@@ -100,7 +100,7 @@ private:
     /** @brief Register no-op (None) conditions so a "none" boundary leaves ghosts untouched
      * rather than falling through to another type or throwing "condition not found". */
     static void register_none_conditions_(boundary_ptr_type& boundary,
-                                          _model_menu_type const& quantities)
+                                          model_menu_type const& quantities)
     {
         for (auto const quantity : quantities.scalars)
             boundary->template registerFieldCondition<FieldBoundaryConditionType::None>(quantity);
@@ -110,7 +110,7 @@ private:
 
     /** @brief Register boundary conditions to make a reflective boundary */
     static void register_reflective_conditions_(boundary_ptr_type& boundary,
-                                                _model_menu_type const& quantities)
+                                                model_menu_type const& quantities)
     {
         if constexpr (!IsMHDQuantity<physical_quantity_type>)
             throw std::runtime_error(
@@ -151,7 +151,7 @@ private:
 
     /** @brief Register boundary conditions to make an open boundary */
     static void register_open_conditions_(boundary_ptr_type& boundary,
-                                          _model_menu_type const& quantities)
+                                          model_menu_type const& quantities)
     {
         if constexpr (!IsMHDQuantity<physical_quantity_type>)
             throw std::runtime_error("Open boundary type is only supported by the MHD model.");
@@ -203,7 +203,7 @@ private:
      */
     static void register_inflow_conditions_(boundary_ptr_type& boundary,
                                             initializer::PHAREDict const& data,
-                                            _model_menu_type const& quantities, double const gamma)
+                                            model_menu_type const& quantities, double const gamma)
     {
         if constexpr (!IsMHDQuantity<physical_quantity_type>)
             throw std::runtime_error(

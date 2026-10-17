@@ -162,9 +162,9 @@ public:
     }
 
 private:
-    using _boundary_map_type = std::unordered_map<BoundaryLocation, std::shared_ptr<boundary_type>>;
+    using boundary_map_type = std::unordered_map<BoundaryLocation, std::shared_ptr<boundary_type>>;
 
-    _boundary_map_type boundaries_;  //!< List of boundaries mapped by their location.
+    boundary_map_type boundaries_;   //!< List of boundaries mapped by their location.
     double gamma_;                   //!< heat capacity ratio
     PriorityPolicy priority_policy_; //!< How the master boundary is chosen at corners and edges.
 
