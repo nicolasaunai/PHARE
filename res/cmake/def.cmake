@@ -33,6 +33,11 @@ endif(useExceptionsInsteadOfMPIAbort)
 set (PHARE_LINK_FLAGS )
 set (PHARE_BASE_LIBS )
 
+if(threads)
+  find_package(OpenMP REQUIRED COMPONENTS CXX)
+  set (PHARE_BASE_LIBS ${PHARE_BASE_LIBS} OpenMP::OpenMP_CXX)
+endif(threads)
+
 if(PGO_GEN)
   if(PGO_USE)
     message(FATAL_ERROR "cannot generate and use pgo at the same time.")
