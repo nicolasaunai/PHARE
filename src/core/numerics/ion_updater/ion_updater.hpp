@@ -16,6 +16,7 @@
 
 
 #include <memory>
+#include <stdexcept>
 #include <vector>
 #include <cstddef>
 #include <algorithm>
@@ -301,6 +302,13 @@ void IonUpdater<Ions, Electromag, GridLayout>::updateAndDepositDomain_(Ions& ion
         // particles that change cell, and those are all the selection after the push looks
         // for, since no domain particle starts in a cell that inNonLevelGhostBox rejects.
         tmp_particles_.resize_like(pop.domainParticles());
+
+        PHARE_DEBUG_DO({
+            for (auto const& particle : pop.domainParticles())
+                if (!isIn(Point{particle.iCell}, boxing.nonLevelGhostBox))
+                    throw std::runtime_error(
+                        "IonUpdater: a domain particle is outside the non level ghost box");
+        })
 
         // first push all domain particles twice
         // accumulate those inNonLevelGhostBox

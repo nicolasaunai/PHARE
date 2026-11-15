@@ -482,24 +482,26 @@ namespace amr
                                          + " beforePushTime " + std::to_string(afterPushTime)
                                          + " on level " + std::to_string(level.getLevelNumber()));
 
-            auto const per_pop = [&](auto& pop, auto const& layout) {
+            auto const per_pop = [&](auto& pop, auto const& layout, auto& interpolate) {
                 auto& particleDensity = pop.particleDensity();
                 auto& flux            = pop.flux();
 
                 // grab levelGhostParticlesOld and levelGhostParticlesNew
                 // and project them with alpha and (1-alpha) coefs, respectively
                 auto& levelGhostOld = pop.levelGhostParticlesOld();
-                interpolate_(makeRange(levelGhostOld), particleDensity, flux, layout, 1. - alpha);
+                interpolate(makeRange(levelGhostOld), particleDensity, flux, layout, 1. - alpha);
 
                 auto& levelGhostNew = pop.levelGhostParticlesNew();
-                interpolate_(makeRange(levelGhostNew), particleDensity, flux, layout, alpha);
+                interpolate(makeRange(levelGhostNew), particleDensity, flux, layout, alpha);
             };
 
-            amr::onLevel(amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_, ions),
-                         [&](auto& view) {
-                             for (auto& pop : std::get<0>(view.args))
-                                 per_pop(pop, view.layout);
-                         });
+            amr::concurrentOnLevel(
+                amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_, ions),
+                [&](auto& view) {
+                    auto interpolate = interpolate_; // its work arrays are per patch
+                    for (auto& pop : std::get<0>(view.args))
+                        per_pop(pop, view.layout, interpolate);
+                });
         }
 
 
