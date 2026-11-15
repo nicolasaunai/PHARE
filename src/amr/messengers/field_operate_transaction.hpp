@@ -59,6 +59,13 @@ public:
         TBOX_ASSERT(refine_data[item_id] != 0);
 
         TBOX_ASSERT_OBJDIM_EQUALITY4(*dst_level, *src_level, dst_node, src_node);
+
+        // found once, as SAMRAI's own transactions do: a schedule asks for them at every fill
+        auto const rank = dst_level->getBoxLevel()->getMPI().getRank();
+        if (dst_node.getOwnerRank() == rank)
+            d_dst_patch = dst_level->getPatch(dst_node.getGlobalId());
+        if (src_node.getOwnerRank() == rank)
+            d_src_patch = src_level->getPatch(src_node.getGlobalId());
     }
 
     virtual ~FieldBorderOpTransaction() {}
@@ -88,6 +95,8 @@ private:
     std::shared_ptr<SAMRAI::hier::BoxOverlap> d_overlap;
     SAMRAI::hier::Box d_dst_node;
     SAMRAI::hier::Box d_src_node;
+    std::shared_ptr<SAMRAI::hier::Patch> d_dst_patch; // those of this process
+    std::shared_ptr<SAMRAI::hier::Patch> d_src_patch;
     SAMRAI::xfer::RefineClasses::Data const** d_refine_data;
     int d_item_id;
     size_t d_incoming_bytes;
@@ -102,14 +111,12 @@ bool FieldBorderOpTransaction<FieldData_t, Operation>::canEstimateIncomingMessag
     bool can_estimate = false;
     if (getSourceProcessor() == d_src_level->getBoxLevel()->getMPI().getRank())
     {
-        can_estimate = d_src_level->getPatch(d_src_node.getGlobalId())
-                           ->getPatchData(d_refine_data[d_item_id]->d_src)
+        can_estimate = d_src_patch->getPatchData(d_refine_data[d_item_id]->d_src)
                            ->canEstimateStreamSizeFromBox();
     }
     else
     {
-        can_estimate = d_dst_level->getPatch(d_dst_node.getGlobalId())
-                           ->getPatchData(d_refine_data[d_item_id]->d_scratch)
+        can_estimate = d_dst_patch->getPatchData(d_refine_data[d_item_id]->d_scratch)
                            ->canEstimateStreamSizeFromBox();
     }
     return can_estimate;
@@ -120,8 +127,7 @@ template<typename FieldData_t, typename Operation>
 size_t FieldBorderOpTransaction<FieldData_t, Operation>::computeIncomingMessageSize()
 {
     PHARE_LOG_SCOPE(3, "FieldBorderOpTransaction::computeIncomingMessageSize");
-    d_incoming_bytes = d_dst_level->getPatch(d_dst_node.getGlobalId())
-                           ->getPatchData(d_refine_data[d_item_id]->d_scratch)
+    d_incoming_bytes = d_dst_patch->getPatchData(d_refine_data[d_item_id]->d_scratch)
                            ->getDataStreamSize(*d_overlap);
     return d_incoming_bytes;
 }
@@ -130,9 +136,8 @@ template<typename FieldData_t, typename Operation>
 size_t FieldBorderOpTransaction<FieldData_t, Operation>::computeOutgoingMessageSize()
 {
     PHARE_LOG_SCOPE(3, "FieldBorderOpTransaction::computeOutgoingMessageSize");
-    d_outgoing_bytes = d_src_level->getPatch(d_src_node.getGlobalId())
-                           ->getPatchData(d_refine_data[d_item_id]->d_src)
-                           ->getDataStreamSize(*d_overlap);
+    d_outgoing_bytes
+        = d_src_patch->getPatchData(d_refine_data[d_item_id]->d_src)->getDataStreamSize(*d_overlap);
     return d_outgoing_bytes;
 }
 
@@ -157,8 +162,7 @@ void FieldBorderOpTransaction<FieldData_t, Operation>::packStream(
     PHARE_LOG_SCOPE(3, "FieldBorderOpTransaction::packStream");
     // this transaction is PHARE's own: its work can wait for the end of the schedule phase as
     // SAMRAI's copy transactions do, see ExchangeJobs
-    d_src_level->getPatch(d_src_node.getGlobalId())
-        ->getPatchData(d_refine_data[d_item_id]->d_src)
+    d_src_patch->getPatchData(d_refine_data[d_item_id]->d_src)
         ->packStreamFuseable(stream, *d_overlap);
 }
 
@@ -169,8 +173,7 @@ void FieldBorderOpTransaction<FieldData_t, Operation>::unpackStream(
     PHARE_LOG_SCOPE(3, "FieldBorderOpTransaction::unpackStream");
     std::shared_ptr<FieldData_t> onode_dst_data(
         SAMRAI_SHARED_PTR_CAST<FieldData_t, SAMRAI::hier::PatchData>(
-            d_dst_level->getPatch(d_dst_node.getGlobalId())
-                ->getPatchData(d_refine_data[d_item_id]->d_scratch)));
+            d_dst_patch->getPatchData(d_refine_data[d_item_id]->d_scratch)));
     TBOX_ASSERT(onode_dst_data);
 
     // the patch owns its data and this transaction its overlap: both outlive the schedule phase
@@ -196,14 +199,12 @@ void FieldBorderOpTransaction<FieldData_t, Operation>::copyLocalData()
 
     std::shared_ptr<FieldData_t> onode_dst_data(
         SAMRAI_SHARED_PTR_CAST<FieldData_t, SAMRAI::hier::PatchData>(
-            d_dst_level->getPatch(d_dst_node.getGlobalId())
-                ->getPatchData(d_refine_data[d_item_id]->d_scratch)));
+            d_dst_patch->getPatchData(d_refine_data[d_item_id]->d_scratch)));
     TBOX_ASSERT(onode_dst_data);
 
     std::shared_ptr<FieldData_t> onode_src_data(
         SAMRAI_SHARED_PTR_CAST<FieldData_t, SAMRAI::hier::PatchData>(
-            d_src_level->getPatch(d_src_node.getGlobalId())
-                ->getPatchData(d_refine_data[d_item_id]->d_src)));
+            d_src_patch->getPatchData(d_refine_data[d_item_id]->d_src)));
     TBOX_ASSERT(onode_src_data);
 
     // the patches own their data and this transaction its overlap: all outlive the schedule phase

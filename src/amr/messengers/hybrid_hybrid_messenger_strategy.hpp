@@ -317,7 +317,7 @@ namespace amr
 
             // init-only schedules are used once, so they are built at fill time, not stored
             onThreads(BalgoInit.createSchedule(levelPtr, nullptr, levelNumber - 1, hierarchy,
-                                               magneticRefineStrategy_()))
+                                               magneticRefineStrategy_(), false, transactionsFor()))
                 ->fillData(initDataTime);
             electricInitRefiners_.fillTransient(hierarchy, levelPtr, initDataTime);
 
@@ -674,15 +674,15 @@ namespace amr
         {
             auto const level = hierarchy->getPatchLevel(levelNumber);
 
-            magPatchGhostsRefineSchedules[levelNumber]
-                = onThreads(BalgoPatchGhost.createSchedule(level, magneticRefineStrategy_()));
+            magPatchGhostsRefineSchedules[levelNumber] = onThreads(BalgoPatchGhost.createSchedule(
+                level, magneticRefineStrategy_(), transactionsFor()));
 
             elecPatchGhostsRefineSchedules[levelNumber]
-                = onThreads(EalgoPatchGhost.createSchedule(level));
+                = onThreads(EalgoPatchGhost.createSchedule(level, nullptr, transactionsFor()));
 
             // technically not needed for finest as refluxing is not done onto it.
-            patchGhostRefluxedSchedules[levelNumber]
-                = onThreads(PatchGhostRefluxedAlgo.createSchedule(level));
+            patchGhostRefluxedSchedules[levelNumber] = onThreads(
+                PatchGhostRefluxedAlgo.createSchedule(level, nullptr, transactionsFor()));
 
             // on the root level there is no coarser source, so these are same-level schedules
             if (levelNumber == rootLevelNumber)
@@ -969,7 +969,7 @@ namespace amr
         {
             auto magSchedule = onThreads(BregridAlgo.createSchedule(
                 level, oldLevel, level->getNextCoarserHierarchyLevelNumber(), hierarchy,
-                magneticRefineStrategy_()));
+                magneticRefineStrategy_(), false, transactionsFor()));
             magSchedule->fillData(initDataTime);
         }
 

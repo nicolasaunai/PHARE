@@ -9,6 +9,8 @@
 #include <new>
 #include <memory>
 #include <vector>
+#include <numeric>
+#include <algorithm>
 #include <cstddef>
 #include <cstring>
 #include <stdexcept>
@@ -81,8 +83,10 @@ public:
     bool recording() const { return recording_ and !running_; }
 
     // job runs when the phase ends, after the jobs added before it for the same destination.
-    // nullptr: the job shares its destination with no other job
-    void add(void const* const destination, Job const& job)
+    // nullptr: the job shares its destination with no other job.
+    // Jobs given the place of their patch in its level run in that order, so that the threads
+    // share them out as they share out a loop over the patches, see core::ThreadPool
+    void add(void const* const destination, Job const& job, std::size_t const place = noPlace)
     {
         auto group = nGroups_;
         if (destination)
@@ -95,10 +99,17 @@ public:
         if (group == nGroups_)
         {
             if (++nGroups_ > groups_.size())
+            {
                 groups_.emplace_back();
+                places_.emplace_back();
+            }
+            places_[group] = place;
+            placed_        = placed_ or place != noPlace;
         }
         groups_[group].push_back(job);
     }
+
+    static constexpr std::size_t noPlace = static_cast<std::size_t>(-1);
 
     // a copy of value that lives until the jobs of the phase have run: for what a job needs
     // and its caller only lends, such as a local variable of a SAMRAI loop
@@ -154,6 +165,7 @@ private:
                 for (std::size_t g = 0; g < self.nGroups_; ++g)
                     self.groups_[g].clear();
                 self.nGroups_ = 0;
+                self.placed_  = false;
                 self.kept_.clear();
                 ++self.phase_;
                 // destinations stay known from one phase to the next, patch data of past
@@ -166,8 +178,15 @@ private:
 
         running_ = true;
         Running const running{*this};
-        core::parallel_for(nGroups_, [&](std::size_t const g) {
-            for (auto const& job : groups_[g])
+
+        order_.resize(nGroups_);
+        std::iota(order_.begin(), order_.end(), std::size_t{0});
+        if (placed_)
+            std::stable_sort(order_.begin(), order_.end(),
+                             [&](auto const a, auto const b) { return places_[a] < places_[b]; });
+
+        core::parallel_for(nGroups_, [&](std::size_t const i) {
+            for (auto const& job : groups_[order_[i]])
                 job();
         });
     }
@@ -185,6 +204,9 @@ private:
     std::size_t nGroups_ = 0;
     std::size_t phase_   = 1;
     std::vector<std::vector<Job>> groups_; // kept between phases, only the first nGroups_ are used
+    std::vector<std::size_t> places_;      // of the groups, see add
+    std::vector<std::size_t> order_;       // the groups in the order they are shared out
+    bool placed_ = false;                  // some group has a place
     std::unordered_map<void const*, Group> groupOf_;
     std::vector<std::shared_ptr<void>> kept_;
 };
