@@ -4,7 +4,9 @@
 #include <mutex>
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <string>
+#include <cstdint>
 #include <thread>
 #include <vector>
 #include <cstddef>
@@ -38,7 +40,17 @@ namespace PHARE::core
   loops nested at least as deep in the meantime, never an outer one: it would start another patch
   while its own is unfinished.
 
+  The indices of an outermost loop are shared out in consecutive blocks, one per thread: a
+  thread takes the indices of its block first, from the front, then the last ones of the blocks
+  of the others. Loops over the same items (the patches of a level) thus give an item to the
+  same thread again and again, and its data stay in the cache of one core, as long as the
+  threads have about the same work. The indices of a nested loop go to whoever asks first.
+
   Idle workers spin for a short while, then sleep until a loop is published.
+
+  The list of published loops is guarded by a lock threads spin on: it is held for a few
+  instructions, and every thread asks for it when a loop starts. A mutex would put them to
+  sleep one behind the other, for longer than a loop over the fields of a few patches lasts.
 
   When the launcher (mpirun, srun) restricted the process to a part of the machine with at least
   as many cores as threads, each thread is pinned to one of these cores (Linux): two hardware
@@ -70,7 +82,7 @@ public:
             return;
 
         {
-            std::lock_guard const lock{mutex_};
+            std::lock_guard const lock{sleepMutex_};
             stop_ = true;
         }
         wakeUp_.notify_all();
@@ -78,6 +90,8 @@ public:
             worker.join();
         workers_.clear();
         stop_ = false;
+
+        blocks_ = std::make_unique<Block[]>(std::max<std::size_t>(nThreads, 1));
 
         auto const cores = coresFor_(nThreads);
         pinTo_(cores, 0);
@@ -102,18 +116,28 @@ public:
             takeIndices_(loop);
         else
         {
+            if (depth_ == 0 and n <= Block::maxIndex)
+                shareOutInBlocks_(loop);
+
             {
-                std::lock_guard const lock{mutex_};
+                std::lock_guard const lock{listLock_};
                 published_.push_back(&loop);
                 ++unfinished_;
             }
             if (sleepers_ > 0)
+            {
+                // a worker about to sleep is either seen here or sees the loop, and it holds
+                // the mutex until it sleeps
+                {
+                    std::lock_guard const lock{sleepMutex_};
+                }
                 wakeUp_.notify_all();
+            }
 
             takeIndices_(loop);
 
             {
-                std::lock_guard const lock{mutex_};
+                std::lock_guard const lock{listLock_};
                 published_.erase(std::find(published_.begin(), published_.end(), &loop));
             }
 
@@ -128,6 +152,22 @@ public:
     }
 
 private:
+    // held for a few instructions only: threads waiting for it spin
+    class SpinLock
+    {
+    public:
+        void lock()
+        {
+            while (locked_.exchange(true, std::memory_order_acquire))
+                while (locked_.load(std::memory_order_relaxed))
+                    relax_();
+        }
+        void unlock() { locked_.store(false, std::memory_order_release); }
+
+    private:
+        std::atomic<bool> locked_{false};
+    };
+
     struct Loop
     {
         std::size_t n;
@@ -138,7 +178,63 @@ private:
         std::atomic<std::size_t> helpers{0}; // threads that joined and may still use the loop
         std::atomic<bool> finished{false};   // someone saw that no index is left
         std::exception_ptr error{};
+        std::size_t nBlocks = 0; // blocks_ its indices are shared out in, instead of next
+
+        void run(std::size_t const i, SpinLock& errorLock)
+        {
+            try
+            {
+                call(fn, i);
+            }
+            catch (...)
+            {
+                std::lock_guard const lock{errorLock};
+                if (!error)
+                    error = std::current_exception();
+            }
+        }
     };
+
+    // consecutive indices of the outermost loop left to one thread first: itself takes them
+    // from the front, the others from the back
+    struct alignas(64) Block
+    {
+        static constexpr std::size_t maxIndex = 0xffffffff;
+
+        // the first index left and one past the last, in one word they are taken from together
+        std::atomic<std::uint64_t> left{0};
+
+        void set(std::size_t const first, std::size_t const last)
+        {
+            left = (static_cast<std::uint64_t>(first) << 32) | last;
+        }
+
+        bool take(std::size_t& i, bool const fromFront)
+        {
+            auto range = left.load();
+            for (;;)
+            {
+                auto const first = range >> 32;
+                auto const last  = range & maxIndex;
+                if (first >= last)
+                    return false;
+                auto const rest
+                    = fromFront ? ((first + 1) << 32) | last : (first << 32) | (last - 1);
+                if (left.compare_exchange_weak(range, rest))
+                {
+                    i = fromFront ? first : last - 1;
+                    return true;
+                }
+            }
+        }
+    };
+
+    void shareOutInBlocks_(Loop& loop)
+    {
+        loop.nBlocks = std::min(loop.n, size());
+        for (std::size_t b = 0; b < loop.nBlocks; ++b)
+            blocks_[b].set(b * loop.n / loop.nBlocks, (b + 1) * loop.n / loop.nBlocks);
+    }
 
     // a published loop is counted in unfinished_ until the first thread sees it has no index left
     void sawNoIndexLeft_(Loop& loop)
@@ -153,19 +249,20 @@ private:
         auto const outerDepth = depth_;
         depth_                = loop.depth + 1;
 
-        for (auto i = loop.next.fetch_add(1); i < loop.n; i = loop.next.fetch_add(1))
+        if (loop.nBlocks > 0)
         {
-            try
-            {
-                loop.call(loop.fn, i);
-            }
-            catch (...)
-            {
-                std::lock_guard const lock{mutex_};
-                if (!loop.error)
-                    loop.error = std::current_exception();
-            }
+            auto const mine = index_ % loop.nBlocks;
+            std::size_t i   = 0;
+            while (blocks_[mine].take(i, /*fromFront=*/true))
+                loop.run(i, listLock_);
+
+            for (std::size_t b = 1; b < loop.nBlocks; ++b)
+                while (blocks_[(mine + b) % loop.nBlocks].take(i, /*fromFront=*/false))
+                    loop.run(i, listLock_);
         }
+        else
+            for (auto i = loop.next.fetch_add(1); i < loop.n; i = loop.next.fetch_add(1))
+                loop.run(i, listLock_);
 
         depth_ = outerDepth;
         sawNoIndexLeft_(loop);
@@ -176,11 +273,15 @@ private:
     {
         Loop* loop = nullptr;
         {
-            std::lock_guard const lock{mutex_};
+            std::lock_guard const lock{listLock_};
             for (auto* const candidate : published_)
             {
-                if (candidate->next >= candidate->n)
+                // a loop shared out in blocks is known to be out of indices once a thread has
+                // been through all its blocks
+                if (candidate->nBlocks == 0 and candidate->next >= candidate->n)
                     sawNoIndexLeft_(*candidate); // its threads are busy with its last indices
+                else if (candidate->finished)
+                    continue;
                 else if (candidate->depth >= minDepth and (!loop or candidate->depth < loop->depth))
                     loop = candidate;
             }
@@ -214,7 +315,7 @@ private:
 
             if (spins % 1024 == 0 and Clock::now() - idleSince > spinTime_)
             {
-                std::unique_lock lock{mutex_};
+                std::unique_lock lock{sleepMutex_};
                 ++sleepers_;
                 wakeUp_.wait(lock, [&] { return stop_ or unfinished_ > 0; });
                 --sleepers_;
@@ -299,9 +400,14 @@ private:
 
     std::vector<std::thread> workers_;
 
-    std::mutex mutex_; // published_, Loop::error, and what wakeUp_ waits for
-    std::condition_variable wakeUp_;
+    SpinLock listLock_; // published_ and Loop::error
     std::vector<Loop*> published_;
+
+    // of the outermost loop, one per thread: there is one such loop at a time
+    std::unique_ptr<Block[]> blocks_ = std::make_unique<Block[]>(1);
+
+    std::mutex sleepMutex_; // what wakeUp_ waits for
+    std::condition_variable wakeUp_;
     std::atomic<std::size_t> unfinished_{0}; // published loops not yet seen without index left
     std::atomic<std::size_t> sleepers_{0};
     std::atomic<bool> stop_{false};
@@ -322,10 +428,15 @@ inline void setNbrThreads(std::size_t const n)
 }
 
 // PHARE_THREADS, 1 if unset: an MPI run that does not ask for threads never starts any
-inline void setNbrThreadsFromEnv()
+inline std::size_t nbrThreadsFromEnv()
 {
     auto const* const env = std::getenv("PHARE_THREADS");
-    setNbrThreads(env ? std::stoul(env) : 1);
+    return env ? std::stoul(env) : 1;
+}
+
+inline void setNbrThreadsFromEnv()
+{
+    setNbrThreads(nbrThreadsFromEnv());
 }
 
 // index of the calling thread among the threads of the process, below nbrThreads()

@@ -72,6 +72,37 @@ TEST(ParallelFor, threadIndexIsBelowTheNumberOfThreads)
 }
 
 
+// loops over the same items give an item to the same thread, whose cache holds its data
+TEST(ParallelFor, outermostLoopGivesEachThreadItsOwnIndicesFirst)
+{
+    std::size_t const nThreads = 4, perThread = 3;
+    Threads const threads{nThreads};
+
+    for (int repeat = 0; repeat < 3; ++repeat)
+    {
+        std::vector<std::size_t> threadOf(nThreads * perThread, nThreads);
+        std::vector<char> counted(nThreads, 0);
+        std::atomic<std::size_t> arrived{0};
+
+        parallel_for(threadOf.size(), [&](std::size_t const i) {
+            // nobody goes on to the indices of another before every thread has one of its own
+            if (!counted[threadIndex()])
+            {
+                counted[threadIndex()] = 1;
+                ++arrived;
+            }
+            while (arrived < nThreads)
+                std::this_thread::yield();
+            threadOf[i] = threadIndex();
+        });
+
+        // a thread that is done early takes the last indices of another: the first ones stay
+        for (std::size_t t = 0; t < nThreads; ++t)
+            EXPECT_EQ(threadOf[t * perThread], t) << "repeat " << repeat;
+    }
+}
+
+
 TEST(ParallelFor, nestedCallVisitsEveryIndexOnce)
 {
     Threads const threads{4};
