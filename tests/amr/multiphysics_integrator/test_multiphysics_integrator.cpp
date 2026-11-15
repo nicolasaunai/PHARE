@@ -161,6 +161,16 @@ TYPED_TEST(SimulatorTest, returnsCorrectMessengerForEachLevel)
 
 
 
+// threads of a process run between its MPI calls: MPI has to be started for that
+TEST(SamraiLifeCycle, startsMPIForAProcessWithThreads)
+{
+    int level = MPI_THREAD_SINGLE;
+    MPI_Query_thread(&level);
+    EXPECT_GE(level, MPI_THREAD_FUNNELED);
+}
+
+
+
 int main(int argc, char** argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

@@ -1,6 +1,7 @@
 
 #include "core/def/phlop.hpp" // IWYU pragma: keep // scope timing
 #include "mpi/mpi_utils.hpp"
+#include "core/utilities/parallel.hpp"
 
 #include "initializer/data_provider.hpp"
 
@@ -8,12 +9,21 @@
 
 #include <SAMRAI/tbox/SAMRAIManager.h>
 
+#include <stdexcept>
+
 namespace PHARE
 {
 
 SamraiLifeCycle::SamraiLifeCycle(int argc, char** argv)
 {
-    SAMRAI::tbox::SAMRAI_MPI::init(&argc, &argv);
+    // MPI is told that the process has threads, of which only this one calls it: the threads of
+    // core::parallel_for never do
+    int provided = MPI_THREAD_SINGLE;
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+    if (provided < MPI_THREAD_FUNNELED and core::nbrThreadsFromEnv() > 1)
+        throw std::runtime_error(
+            "PHARE_THREADS: this MPI cannot be used by a process with threads");
+    SAMRAI::tbox::SAMRAI_MPI::init(MPI_COMM_WORLD);
     SAMRAI::tbox::SAMRAIManager::initialize();
     SAMRAI::tbox::SAMRAIManager::startup();
     // uncomment next line for debugging samrai issues
@@ -34,6 +44,7 @@ SamraiLifeCycle::~SamraiLifeCycle()
     SAMRAI::tbox::SAMRAIManager::shutdown();
     SAMRAI::tbox::SAMRAIManager::finalize();
     SAMRAI::tbox::SAMRAI_MPI::finalize();
+    MPI_Finalize();
 }
 
 void SamraiLifeCycle::reset()
