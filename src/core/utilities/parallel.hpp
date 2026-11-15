@@ -9,9 +9,16 @@
 #include <vector>
 #include <cstddef>
 #include <cstdlib>
+#include <optional>
 #include <algorithm>
 #include <exception>
 #include <condition_variable>
+
+#if defined(__linux__)
+#include <sched.h>
+#include <fstream>
+#include <unistd.h>
+#endif
 
 // Threads of one MPI process: parallel_for at the end of this file is the interface.
 
@@ -32,6 +39,12 @@ namespace PHARE::core
   while its own is unfinished.
 
   Idle workers spin for a short while, then sleep until a loop is published.
+
+  When the launcher (mpirun, srun) restricted the process to a part of the machine with at least
+  as many cores as threads, each thread is pinned to one of these cores (Linux): two hardware
+  threads of one core are given to the process as two cpus, and threads left free to move end up
+  sharing a core while another is idle. A process that may run anywhere is left alone: several
+  of them would pin their threads to the same cores.
 */
 class ThreadPool
 {
@@ -66,8 +79,13 @@ public:
         workers_.clear();
         stop_ = false;
 
+        auto const cores = coresFor_(nThreads);
+        pinTo_(cores, 0);
         for (std::size_t index = 1; index < nThreads; ++index)
-            workers_.emplace_back([this, index] { work_(index); });
+            workers_.emplace_back([this, index, cores] {
+                pinTo_(cores, index);
+                work_(index);
+            });
     }
 
     // index of the calling thread among the threads of the pool
@@ -204,6 +222,65 @@ private:
             }
         }
     }
+
+#if defined(__linux__)
+    // One cpu per core for nThreads threads to be pinned on, none if they are to be left free.
+    // A calling thread pinned by a previous call gets back the cpus it had first.
+    std::vector<int> coresFor_(std::size_t const nThreads)
+    {
+        if (callerCpus_)
+        {
+            sched_setaffinity(0, sizeof(cpu_set_t), &*callerCpus_);
+            callerCpus_.reset();
+        }
+
+        cpu_set_t allowed;
+        if (nThreads < 2 or sched_getaffinity(0, sizeof(cpu_set_t), &allowed) != 0)
+            return {};
+
+        std::vector<int> cores, seen;
+        for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu)
+        {
+            if (!CPU_ISSET(cpu, &allowed))
+                continue;
+
+            // the first cpu of the core this one belongs to, e.g. 3 from "3,51"
+            int first = cpu;
+            std::ifstream{"/sys/devices/system/cpu/cpu" + std::to_string(cpu)
+                          + "/topology/thread_siblings_list"}
+                >> first;
+
+            if (std::find(seen.begin(), seen.end(), first) == seen.end())
+            {
+                seen.push_back(first);
+                cores.push_back(cpu);
+            }
+        }
+
+        bool const restricted = CPU_COUNT(&allowed) < sysconf(_SC_NPROCESSORS_ONLN);
+        if (!restricted or cores.size() < nThreads)
+            return {};
+
+        callerCpus_ = allowed;
+        return cores;
+    }
+
+    static void pinTo_(std::vector<int> const& cores, std::size_t const index)
+    {
+        if (index < cores.size())
+        {
+            cpu_set_t cpu;
+            CPU_ZERO(&cpu);
+            CPU_SET(cores[index], &cpu);
+            sched_setaffinity(0, sizeof(cpu_set_t), &cpu); // 0: the calling thread
+        }
+    }
+
+    std::optional<cpu_set_t> callerCpus_; // of the calling thread before it was pinned
+#else
+    static std::vector<int> coresFor_(std::size_t) { return {}; }
+    static void pinTo_(std::vector<int> const&, std::size_t) {}
+#endif
 
     static void relax_()
     {

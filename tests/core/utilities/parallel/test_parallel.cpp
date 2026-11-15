@@ -10,6 +10,13 @@
 #include <cstddef>
 #include <stdexcept>
 
+#if defined(__linux__)
+#include <sched.h>
+#include <string>
+#include <fstream>
+#include <unistd.h>
+#endif
+
 using namespace PHARE::core;
 
 namespace
@@ -151,6 +158,99 @@ TEST(ParallelFor, nestedCallRethrows)
                               }),
                  std::runtime_error);
 }
+
+
+#if defined(__linux__)
+namespace
+{
+// first cpu of the core a cpu belongs to
+int coreOf(int const cpu)
+{
+    int first = cpu;
+    std::ifstream{"/sys/devices/system/cpu/cpu" + std::to_string(cpu)
+                  + "/topology/thread_siblings_list"}
+        >> first;
+    return first;
+}
+
+std::vector<int> cpusOf(cpu_set_t const& set)
+{
+    std::vector<int> cpus;
+    for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu)
+        if (CPU_ISSET(cpu, &set))
+            cpus.push_back(cpu);
+    return cpus;
+}
+} // namespace
+
+
+TEST(ThreadPool, pinsEachThreadToItsOwnCoreWhenTheProcessIsRestricted)
+{
+    cpu_set_t launch;
+    ASSERT_EQ(sched_getaffinity(0, sizeof(cpu_set_t), &launch), 0);
+
+    // restrict this process to every cpu of three cores, as a launcher would
+    std::vector<int> cores;
+    cpu_set_t restricted;
+    CPU_ZERO(&restricted);
+    for (auto const cpu : cpusOf(launch))
+    {
+        auto const core = coreOf(cpu);
+        if (std::find(cores.begin(), cores.end(), core) == cores.end() and cores.size() < 3)
+            cores.push_back(core);
+        if (std::find(cores.begin(), cores.end(), core) != cores.end())
+            CPU_SET(cpu, &restricted);
+    }
+    if (cores.size() < 3 or CPU_COUNT(&restricted) == CPU_COUNT(&launch))
+        GTEST_SKIP() << "needs more than three cores";
+
+    ASSERT_EQ(sched_setaffinity(0, sizeof(cpu_set_t), &restricted), 0);
+    {
+        Threads const threads{3};
+
+        std::vector<int> coreOfThread(3, -1), cpusOfThread(3, 0);
+        for (int repeat = 0; repeat < 20; ++repeat)
+            parallel_for(64, [&](std::size_t) {
+                cpu_set_t mine;
+                sched_getaffinity(0, sizeof(cpu_set_t), &mine);
+                cpusOfThread[threadIndex()] = CPU_COUNT(&mine);
+                coreOfThread[threadIndex()] = coreOf(sched_getcpu());
+                volatile double x = 0;
+                for (int k = 0; k < 20000; ++k)
+                    x = x + k;
+            });
+
+        std::sort(coreOfThread.begin(), coreOfThread.end());
+        EXPECT_EQ(coreOfThread, cores) << "one thread per core";
+        EXPECT_EQ(cpusOfThread, (std::vector<int>{1, 1, 1}));
+    }
+
+    // back to one thread: the caller may run where the process was launched again
+    cpu_set_t after;
+    sched_getaffinity(0, sizeof(cpu_set_t), &after);
+    EXPECT_TRUE(CPU_EQUAL(&after, &restricted));
+    sched_setaffinity(0, sizeof(cpu_set_t), &launch);
+}
+
+
+TEST(ThreadPool, leavesThreadsFreeWhenTheProcessMayRunAnywhere)
+{
+    cpu_set_t launch;
+    ASSERT_EQ(sched_getaffinity(0, sizeof(cpu_set_t), &launch), 0);
+    if (CPU_COUNT(&launch) < sysconf(_SC_NPROCESSORS_ONLN))
+        GTEST_SKIP() << "this process is restricted already";
+
+    Threads const threads{2};
+    std::atomic<int> pinned{0};
+    parallel_for(64, [&](std::size_t) {
+        cpu_set_t mine;
+        sched_getaffinity(0, sizeof(cpu_set_t), &mine);
+        if (CPU_COUNT(&mine) != CPU_COUNT(&launch))
+            ++pinned;
+    });
+    EXPECT_EQ(pinned, 0);
+}
+#endif
 
 
 TEST(Chunks, coverTheRangeOnceInOrder)
