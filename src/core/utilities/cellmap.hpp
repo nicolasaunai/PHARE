@@ -158,6 +158,18 @@ public:
                 CellExtractor extract = default_extractor);
 
 
+    // as update, the new cell being given instead of read from the item: the item may have
+    // changed cell again since
+    template<typename CellIndex>
+    void update(std::size_t itemIndex, CellIndex const& oldCell, CellIndex const& newCell)
+    {
+        auto& oldList = cellIndexes_(local_(oldCell));
+        if (oldList.is_indexed(itemIndex))
+            oldList.remove(itemIndex);
+        addToCell(newCell, itemIndex);
+    }
+
+
     // re-orders the array so that elements satisfying the predicate are found first
     // and element not satisfying after. Returns the pivot index, which is the first
     // element not to satisfy the predicate

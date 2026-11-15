@@ -26,6 +26,7 @@ namespace core
         // TODO : to really be independant on boris which has 2 push steps
         // we should have an arbitrary number of selectors, 1 per push step
         // charge and mass are those of the population the particles belong to
+        // an empty firstSelector selects every particle
         virtual ParticleRange move(ParticleRange const& rangeIn, ParticleRange& rangeOut,
                                    Electromag const& emFields, double charge, double mass,
                                    Interpolator& interpolator, GridLayout const& layout,

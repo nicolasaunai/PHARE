@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 """
-The patches of an MPI process can run on several threads (PHARE_THREADS). A patch is computed
-the same way whichever thread runs it, so the same run on 1 and on 4 threads must write
-identical files: fields, moments and particles, on both levels, bit for bit.
+An MPI process can run on several threads (PHARE_THREADS): its patches concurrently, and the
+particles of a patch in pieces when it has many.
+
+A patch with few particles is computed the same way whichever thread runs it, so the same run
+on 1 and on 4 threads must write identical files: fields, moments and particles, on both levels,
+bit for bit.
+
+A patch with many particles has its deposit cut in pieces as soon as there are several threads.
+The pieces do not depend on the number of threads, so 2 and 4 threads must write identical files.
+One thread deposits in one piece: nodes sum the same particles in another order, and the files
+agree with the threaded ones to rounding.
 """
 
 import os
@@ -27,14 +35,14 @@ final_time = time_step * time_step_nbr
 diag_dir = "phare_outputs/threads"
 
 
-def config(diag_subdir):
+def config(diag_subdir, largest_patch_size, ppc):
     sim = ph.Simulation(
         time_step=time_step,
         time_step_nbr=time_step_nbr,
         cells=cells,
         dl=dl,
         interp_order=1,
-        largest_patch_size=10,  # many patches per thread
+        largest_patch_size=largest_patch_size,
         refinement_boxes={"L0": {"B0": [(10, 5), (29, 14)]}},
         diag_options={
             "format": "phareh5",
@@ -76,7 +84,7 @@ def config(diag_subdir):
             "vthx": vth,
             "vthy": vth,
             "vthz": vth,
-            "nbr_part_per_cell": 20,
+            "nbr_part_per_cell": ppc,
             "init": {"seed": 1337},
         },
     )
@@ -111,31 +119,60 @@ class ThreadsTest(SimulatorTest):
         ph.global_vars.sim = None
         os.environ.pop("PHARE_THREADS", None)
 
-    def run_with(self, nthreads):
+    def run_with(self, nthreads, case, **kwargs):
         ph.global_vars.sim = None
         os.environ["PHARE_THREADS"] = str(nthreads)
-        Simulator(config(f"threads_{nthreads}")).run().reset()
+        subdir = f"{case}_{nthreads}"
+        Simulator(config(subdir, **kwargs)).run().reset()
+        return Path(diag_dir) / subdir
 
-    def test_same_files_on_one_and_four_threads(self):
-        self.run_with(1)
-        self.run_with(4)
-
-        if cpp.mpi_rank() != 0:
-            return
-
-        one, four = (Path(diag_dir) / f"threads_{n}" for n in (1, 4))
+    def files_of(self, one, other):
         files = sorted(p.name for p in one.glob("*.h5"))
         self.assertGreaterEqual(len(files), 5)
-        self.assertEqual(files, sorted(p.name for p in four.glob("*.h5")))
-
+        self.assertEqual(files, sorted(p.name for p in other.glob("*.h5")))
         for name in files:
-            a, b = datasets(one / name), datasets(four / name)
+            a, b = datasets(one / name), datasets(other / name)
             self.assertGreater(len(a), 0, name)
             self.assertEqual(sorted(a), sorted(b), name)
+            yield name, a, b
+
+    def assert_same_files(self, one, other):
+        for name, a, b in self.files_of(one, other):
             for key in a:
                 # ghost values never filled are NaN in both runs
                 same = np.array_equal(a[key], b[key], equal_nan=a[key].dtype.kind == "f")
                 self.assertTrue(same, f"{name}:{key} differs")
+
+    def assert_close_files(self, one, other, rtol):
+        for name, a, b in self.files_of(one, other):
+            for key in a:
+                self.assertEqual(a[key].shape, b[key].shape, f"{name}:{key}")
+                if a[key].dtype.kind != "f":
+                    self.assertTrue(np.array_equal(a[key], b[key]), f"{name}:{key} differs")
+                    continue
+                scale = np.nanmax(np.abs(a[key])) if a[key].size else 0.0
+                close = np.allclose(a[key], b[key], rtol=0, atol=rtol * scale, equal_nan=True)
+                self.assertTrue(close, f"{name}:{key} differs by more than rounding")
+
+    def test_small_patches_same_files_on_one_and_four_threads(self):
+        # 2000 particles per patch: no pieces, many patches per thread
+        case = dict(largest_patch_size=10, ppc=20)
+        one = self.run_with(1, "small", **case)
+        four = self.run_with(4, "small", **case)
+
+        if cpp.mpi_rank() == 0:
+            self.assert_same_files(one, four)
+
+    def test_large_patches_same_files_on_two_and_four_threads(self):
+        # 40000 particles per patch and more: push and deposit in pieces
+        case = dict(largest_patch_size=20, ppc=100)
+        one = self.run_with(1, "large", **case)
+        two = self.run_with(2, "large", **case)
+        four = self.run_with(4, "large", **case)
+
+        if cpp.mpi_rank() == 0:
+            self.assert_same_files(two, four)
+            self.assert_close_files(one, four, rtol=1e-12)
 
 
 if __name__ == "__main__":

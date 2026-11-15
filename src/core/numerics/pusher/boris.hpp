@@ -2,14 +2,17 @@
 #define PHARE_CORE_PUSHER_BORIS_HPP
 
 
+#include "core/def.hpp"
 #include "core/errors.hpp"
 #include "core/logger.hpp"
 #include "core/numerics/pusher/pusher.hpp"
+#include "core/utilities/parallel.hpp"
 
 
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <vector>
 #include <sstream>
 #include <iterator>
 #include <algorithm>
@@ -91,6 +94,11 @@ public:
 #endif
 
 
+    /** see Pusher::move() documentation
+     *
+     * With an empty firstSelector no particle is set aside between the two position updates:
+     * the range is then pushed in pieces, see moveInPieces_, with the same result.
+     */
     ParticleRange move(ParticleRange const& rangeIn, ParticleRange& rangeOut,
                        Electromag const& emFields, double charge, double mass,
                        Interpolator& interpolator, GridLayout const& layout,
@@ -98,43 +106,33 @@ public:
     {
         PHARE_LOG_SCOPE(3, "Boris::move_no_bc");
 
+        double const dto2m = 0.5 * dt_ / mass;
+        double const coef1 = charge * dto2m;
+
+        if (!firstSelector)
+        {
+            moveInPieces_(rangeIn, rangeOut, emFields, coef1, interpolator, layout);
+            return secondSelector(rangeOut);
+        }
+
+        auto& outParticles    = rangeOut.array();
+        auto const changeCell = [&](auto const& newCell, std::size_t const idx) {
+            outParticles.change_icell(newCell, idx);
+        };
+
         // push the particles of half a step
         // rangeIn : t=n, rangeOut : t=n+1/2
         // Do not partition on this step - this is to keep all domain and ghost
         //   particles consistent. see: https://github.com/PHAREHUB/PHARE/issues/571
-        prePushStep_(rangeIn, rangeOut);
+        for (auto inIdx = rangeIn.ibegin(), outIdx = rangeOut.ibegin(); inIdx < rangeIn.iend();
+             ++inIdx, ++outIdx)
+            prePushStep_(rangeIn.array()[inIdx], outParticles[outIdx], outIdx, changeCell);
 
         rangeOut = firstSelector(rangeOut);
 
-        double const dto2m = 0.5 * dt_ / mass;
-        double const coef1 = charge * dto2m;
         for (auto idx = rangeOut.ibegin(); idx < rangeOut.iend(); ++idx)
-        {
-            auto& currPart = rangeOut.array()[idx];
-
-            //  get electromagnetic fields interpolated on the particles of rangeOut stop at newEnd.
-            //  get the particle velocity from t=n to t=n+1
-            auto const& local_em = interpolator(currPart, emFields, layout);
-            accelerate_(currPart, local_em, coef1);
-
-            // now advance the particles from t=n+1/2 to t=n+1 using v_{n+1} just calculated
-            // and get a pointer to the first leaving particle
-            try
-            {
-                postPushStep_(rangeOut, idx);
-            }
-            catch (DictionaryException const& bex)
-            {
-                auto ex            = bex;
-                auto const& [e, b] = local_em;
-                for (std::uint16_t i = 0; i < 3; ++i)
-                    ex("E_" + std::to_string(i), std::to_string(e[i]));
-                for (std::uint16_t i = 0; i < 3; ++i)
-                    ex("B_" + std::to_string(i), std::to_string(b[i]));
-                ex("level", std::to_string(layout.levelNumber()));
-                throw ex;
-            }
-        }
+            accelerateAndPostPushStep_(outParticles[idx], idx, emFields, coef1, interpolator,
+                                       layout, changeCell);
 
         return secondSelector(rangeOut);
     }
@@ -174,63 +172,150 @@ private:
     }
 
 
-    /** advance the particles in rangeIn of half a time step and store them
-     * in rangeOut.
-     * @return the function returns and iterator on the first leaving particle, as
-     * detected by the ParticleSelector
-     */
-    void prePushStep_(ParticleRange const& rangeIn, ParticleRange& rangeOut)
+    // particles of a piece: they fit in the cache of a core (256 kB in 2D), so that the piece
+    // goes through memory once for the whole push
+    static constexpr std::size_t particlesPerPiece_ = 4096;
+
+    // particles of one piece that changed cell in one of the two position updates
+    struct alignas(64) CellChanges
     {
-        auto& inParticles  = rangeIn.array();
-        auto& outParticles = rangeOut.array();
-        for (auto inIdx = rangeIn.ibegin(), outIdx = rangeOut.ibegin(); inIdx < rangeIn.iend();
-             ++inIdx, ++outIdx)
+        struct Change
         {
-            // in the first push, this is the first time
-            // we push to rangeOut, which contains crap
-            // the push will only touch the particle position
-            // but the next step being the acceleration of
-            // rangeOut, we need to copy rangeIn weights
-            // and velocity. This is done here although
-            // not strictly speaking this function's business
-            // to take advantage that we're already looping
-            // over rangeIn particles.
+            std::size_t idx;
+            std::array<int, dim> oldCell, newCell;
+        };
+        std::vector<Change> changes;
+    };
 
-            outParticles[outIdx].weight = inParticles[inIdx].weight;
-            outParticles[outIdx].v      = inParticles[inIdx].v;
+    /** Pushes rangeIn into rangeOut as the two loops of move do, piece by piece: the first
+     * position update of a piece of particles, then their velocity and second position update,
+     * while they are still in the cache of the core.
+     *
+     * The pieces run on the threads of the process, see core::parallel_for. The cell map of
+     * the output array is shared by the pieces, so a piece notes the particles that change
+     * cell, and the map learns the changes afterwards in the order one thread running the two
+     * loops over the whole range would have made them: all those of the first position update
+     * in particle order, then all those of the second. The map and the particles end the same.
+     *
+     * When the two ranges are in different arrays, the output particles are copies of the input
+     * ones made here: the output array only needs the size and the cell map of the input one.
+     */
+    void moveInPieces_(ParticleRange const& rangeIn, ParticleRange& rangeOut,
+                       Electromag const& emFields, double const coef1, Interpolator& interpolator,
+                       GridLayout const& layout)
+    {
+        auto& inParticles   = rangeIn.array();
+        auto& outParticles  = rangeOut.array();
+        auto const firstIn  = rangeIn.ibegin();
+        auto const firstOut = rangeOut.ibegin();
+        auto const n        = rangeIn.size();
+        auto const nPieces  = std::max<std::size_t>(n / particlesPerPiece_, 1);
+        bool const copies   = &inParticles != &outParticles;
 
-            try
+        std::vector<CellChanges> prePush(nPieces), postPush(nPieces);
+
+        parallel_for(nPieces, [&](std::size_t const p) {
+            auto const piece       = chunk(n, nPieces, p);
+            auto pieceInterpolator = interpolator; // its work arrays are per piece
+
+            auto const noteIn = [&](auto& changes) {
+                return [&](auto const& newCell, std::size_t const idx) {
+                    changes.push_back({idx, outParticles[idx].iCell, newCell});
+                    outParticles[idx].iCell = newCell;
+                };
+            };
+            auto const notePrePush  = noteIn(prePush[p].changes);
+            auto const notePostPush = noteIn(postPush[p].changes);
+
+            for (auto i = piece.first; i < piece.last; ++i)
             {
-                auto newCell = advancePosition_(inParticles[inIdx], outParticles[outIdx]);
-                if (newCell != inParticles[inIdx].iCell)
-                    outParticles.change_icell(newCell, outIdx);
+                if (copies)
+                    outParticles[firstOut + i] = inParticles[firstIn + i];
+                prePushStep_(inParticles[firstIn + i], outParticles[firstOut + i], firstOut + i,
+                             notePrePush);
             }
-            catch (MoveTwoCellException const& e)
-            {
-                std::stringstream ss;
-                ss << "PrePush Particle moved 2 cells with delta/vel: ";
-                ss << e.delta << "/" << e.vel << std::endl;
-                DictionaryException ex{"cause", ss.str()};
-                throw ex;
-            }
+
+            for (auto i = piece.first; i < piece.last; ++i)
+                accelerateAndPostPushStep_(outParticles[firstOut + i], firstOut + i, emFields,
+                                           coef1, pieceInterpolator, layout, notePostPush);
+        });
+
+        for (auto const* const pass : {&prePush, &postPush})
+            for (auto const& piece : *pass)
+                for (auto const& [idx, oldCell, newCell] : piece.changes)
+                    outParticles.cell_changed(oldCell, newCell, idx);
+    }
+
+
+    /** advance partIn of half a time step and store it in partOut, at index outIdx of its array
+     *  changeCell(newCell, outIdx) is called if it changes cell
+     */
+    template<typename Particle_t>
+    PHARE_ALWAYS_INLINE void prePushStep_(Particle_t const& partIn, Particle_t& partOut,
+                                          std::size_t const outIdx, auto const& changeCell)
+    {
+        // in the first push, this is the first time
+        // we push to rangeOut, which contains crap
+        // the push will only touch the particle position
+        // but the next step being the acceleration of
+        // rangeOut, we need to copy rangeIn weights
+        // and velocity. This is done here although
+        // not strictly speaking this function's business
+        // to take advantage that we're already looping
+        // over rangeIn particles.
+
+        partOut.weight = partIn.weight;
+        partOut.v      = partIn.v;
+
+        try
+        {
+            auto newCell = advancePosition_(partIn, partOut);
+            if (newCell != partIn.iCell)
+                changeCell(newCell, outIdx);
+        }
+        catch (MoveTwoCellException const& e)
+        {
+            std::stringstream ss;
+            ss << "PrePush Particle moved 2 cells with delta/vel: ";
+            ss << e.delta << "/" << e.vel << std::endl;
+            DictionaryException ex{"cause", ss.str()};
+            throw ex;
         }
     }
 
-    void postPushStep_(ParticleRange& range, std::size_t idx)
+    /** get the particle velocity from t=n to t=n+1 with the electromagnetic fields interpolated
+     *  at its position, then advance it from t=n+1/2 to t=n+1 using v_{n+1} just calculated.
+     *  changeCell(newCell, idx) is called if it changes cell
+     */
+    template<typename Particle_t>
+    PHARE_ALWAYS_INLINE void
+    accelerateAndPostPushStep_(Particle_t& particle, std::size_t const idx,
+                               Electromag const& emFields, double const coef1,
+                               Interpolator& interpolator, GridLayout const& layout,
+                               auto const& changeCell)
     {
+        auto const& local_em = interpolator(particle, emFields, layout);
+        accelerate_(particle, local_em, coef1);
+
         try
         {
-            auto& particles = range.array();
-            auto newCell    = advancePosition_(particles[idx], particles[idx]);
-            if (newCell != particles[idx].iCell)
-                particles.change_icell(newCell, idx);
+            auto newCell = advancePosition_(particle, particle);
+            if (newCell != particle.iCell)
+                changeCell(newCell, idx);
         }
         catch (MoveTwoCellException const& e)
         {
             std::stringstream ss;
             ss << "PostPush Particle moved 2 cells with delta/vel: ";
             ss << e.delta << "/" << e.vel << std::endl;
-            throw DictionaryException{}("cause", ss.str());
+            DictionaryException ex{"cause", ss.str()};
+            auto const& [E, B] = local_em;
+            for (std::uint16_t i = 0; i < 3; ++i)
+                ex("E_" + std::to_string(i), std::to_string(E[i]));
+            for (std::uint16_t i = 0; i < 3; ++i)
+                ex("B_" + std::to_string(i), std::to_string(B[i]));
+            ex("level", std::to_string(layout.levelNumber()));
+            throw ex;
         }
     }
 

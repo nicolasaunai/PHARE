@@ -61,6 +61,20 @@ public:
     ParticleArray& operator=(ParticleArray&& from)      = default;
     ParticleArray& operator=(ParticleArray const& from) = default;
 
+    // same box and number of particles as from, with an empty cell map. The particles
+    // themselves are not copied: for a caller that writes all of them, as the pusher does
+    void resize_like(ParticleArray const& from)
+    {
+        if (box_ == from.box_)
+            cellMap_.clear();
+        else
+        {
+            box_     = from.box_;
+            cellMap_ = CellMap_t{box_};
+        }
+        particles_.resize(from.size());
+    }
+
     NO_DISCARD std::size_t size() const { return particles_.size(); }
     NO_DISCARD std::size_t capacity() const { return particles_.capacity(); }
 
@@ -187,6 +201,16 @@ public:
         auto const box_is_valid         = box_.size() > 1;
         if (box_is_valid)
             cellMap_.update(particles_, particleIndex, oldCell);
+    }
+
+    // the iCell of the particle went from oldCell to newCell without the cell map being told,
+    // see change_icell. Its iCell may have changed again since
+    template<typename Cell>
+    void cell_changed(Cell const& oldCell, Cell const& newCell, std::size_t particleIndex)
+    {
+        auto const box_is_valid = box_.size() > 1;
+        if (box_is_valid)
+            cellMap_.update(particleIndex, oldCell, newCell);
     }
 
 
