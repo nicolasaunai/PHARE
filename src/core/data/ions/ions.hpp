@@ -18,6 +18,7 @@
 #include "initializer/data_provider.hpp"
 #include "particle_initializers/particle_initializer_factory.hpp"
 #include "core/utilities/algorithm.hpp"
+#include "core/utilities/parallel.hpp"
 #include "core/utilities/types.hpp"
 #include "core/utilities/box/box.hpp"
 #include "core/utilities/range/range.hpp"
@@ -82,6 +83,26 @@ namespace core
 
         // the charge density of a population is its charge times its particle density,
         // which is complete (border sums, level ghost particles) when this is called
+        // out = op(a) and out = op(a, b) node by node: in pieces run by the threads of the
+        // process when the fields are large, see core::parallel_for_pieces
+        static void transform_(auto const& a, auto& out, auto const& op)
+        {
+            parallel_for_pieces(a.size(), nodesPerPiece,
+                                [&](std::size_t const first, std::size_t const last) {
+                                    std::transform(std::begin(a) + first, std::begin(a) + last,
+                                                   std::begin(out) + first, op);
+                                });
+        }
+
+        static void combine_(auto const& a, auto const& b, auto& out, auto const& op)
+        {
+            parallel_for_pieces(
+                a.size(), nodesPerPiece, [&](std::size_t const first, std::size_t const last) {
+                    std::transform(std::begin(a) + first, std::begin(a) + last,
+                                   std::begin(b) + first, std::begin(out) + first, op);
+                });
+        }
+
         void computeChargeDensity()
         {
             chargeDensity_.zero();
@@ -94,12 +115,9 @@ namespace core
 
                 auto const& particleDensity = pop.particleDensity();
                 auto& popDensity            = pop.chargeDensity();
-                std::transform(std::begin(particleDensity), std::end(particleDensity),
-                               std::begin(popDensity),
-                               [q = pop.charge()](Float const& n) { return q * n; });
-                std::transform(std::begin(chargeDensity_), std::end(chargeDensity_),
-                               std::begin(popDensity), std::begin(chargeDensity_),
-                               std::plus<Float>{});
+                transform_(particleDensity, popDensity,
+                           [q = pop.charge()](Float const& n) { return q * n; });
+                combine_(chargeDensity_, popDensity, chargeDensity_, std::plus<Float>{});
             }
         }
 
@@ -114,9 +132,8 @@ namespace core
                 // have to account for the field dimensionality.
 
                 auto& popDensity = pop.particleDensity();
-                std::transform(
-                    std::begin(massDensity_), std::end(massDensity_), std::begin(popDensity),
-                    std::begin(massDensity_),
+                combine_(
+                    massDensity_, popDensity, massDensity_,
                     [&pop](auto const& n, auto const& pop_n) { return n + pop_n * pop.mass(); });
             }
         }
@@ -140,21 +157,15 @@ namespace core
                 auto const& flux    = pop.flux();
                 auto&& [fx, fy, fz] = flux();
 
-                std::transform(std::begin(vx), std::end(vx), std::begin(fx), std::begin(vx),
-                               plusMass);
-                std::transform(std::begin(vy), std::end(vy), std::begin(fy), std::begin(vy),
-                               plusMass);
-                std::transform(std::begin(vz), std::end(vz), std::begin(fz), std::begin(vz),
-                               plusMass);
+                combine_(vx, fx, vx, plusMass);
+                combine_(vy, fy, vy, plusMass);
+                combine_(vz, fz, vz, plusMass);
             }
 
 
-            std::transform(std::begin(vx), std::end(vx), std::begin(massDensity_), std::begin(vx),
-                           std::divides<Float>{});
-            std::transform(std::begin(vy), std::end(vy), std::begin(massDensity_), std::begin(vy),
-                           std::divides<Float>{});
-            std::transform(std::begin(vz), std::end(vz), std::begin(massDensity_), std::begin(vz),
-                           std::divides<Float>{});
+            combine_(vx, massDensity_, vx, std::divides<Float>{});
+            combine_(vy, massDensity_, vy, std::divides<Float>{});
+            combine_(vz, massDensity_, vz, std::divides<Float>{});
         }
 
 
@@ -172,8 +183,7 @@ namespace core
                 {
                     auto& c       = chargeFlux_[i];
                     auto const& f = pop.flux()[i];
-                    std::transform(std::begin(c), std::end(c), std::begin(f), std::begin(c),
-                                   plusCharge);
+                    combine_(c, f, c, plusCharge);
                 }
             }
         }

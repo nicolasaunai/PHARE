@@ -182,6 +182,24 @@ public:
         addToCell(newCell, itemIndex);
     }
 
+    // The part of this update that changes the lists of the cells whose first index is in
+    // [firstRow, lastRow). Threads in charge of ranges that do not overlap may call it at the
+    // same time: applied by each to the same updates in the same order, the lists end as if
+    // the updates had been made one after the other.
+    template<typename CellIndex>
+    void update(std::size_t itemIndex, CellIndex const& oldCell, CellIndex const& newCell,
+                cell_index_t const firstRow, cell_index_t const lastRow)
+    {
+        if (firstRow <= oldCell[0] and oldCell[0] < lastRow)
+        {
+            auto& oldList = cellIndexes_(local_(oldCell));
+            if (oldList.is_indexed(itemIndex))
+                oldList.remove(itemIndex);
+        }
+        if (firstRow <= newCell[0] and newCell[0] < lastRow)
+            addToCell(newCell, itemIndex);
+    }
+
 
     // re-orders the array so that elements satisfying the predicate are found first
     // and element not satisfying after. Returns the pivot index, which is the first

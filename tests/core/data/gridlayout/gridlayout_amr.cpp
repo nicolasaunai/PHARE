@@ -7,10 +7,43 @@
 
 #include "gtest/gtest.h"
 
+#include <vector>
+#include <numeric>
+#include <algorithm>
+
 using namespace PHARE::core;
 
 std::size_t constexpr static dim = 1;
 using GridLayoutT                = PHARE_Types<PHARE::SimOpts{dim, 1}>::Hybrid::GridLayout_t;
+
+// field loops cut in pieces for the threads of a process visit the same points, once
+TEST(GridLayout, evalOnBoxInPiecesVisitsThePointsOfEvalOnBoxOnce)
+{
+    using GridLayout2D = PHARE_Types<PHARE::SimOpts{2, 1}>::Hybrid::GridLayout_t;
+    GridLayout2D layout{{0.1, 0.1}, {300u, 200u}, {{0., 0.}}, Box{Point{0, 0}, Point{299, 199}}};
+
+    struct
+    {
+        auto physicalQuantity() const { return HybridQuantity::Scalar::rho; }
+    } rho;
+
+    std::size_t const ny = 400;
+    std::vector<int> onOneThread(ny * ny, 0), inPieces(ny * ny, 0), bigger(ny * ny, 0);
+
+    layout.evalOnBox(rho, [&](auto const i, auto const j) { ++onOneThread[i * ny + j]; });
+
+    setNbrThreads(4);
+    layout.evalOnBoxInPieces(rho, [&](auto const i, auto const j) { ++inPieces[i * ny + j]; });
+    layout.evalOnBiggerBoxInPieces(rho, Point<std::uint32_t, 2>{1u, 1u},
+                                   [&](auto const i, auto const j) { ++bigger[i * ny + j]; });
+    setNbrThreads(1);
+
+    EXPECT_EQ(onOneThread, inPieces);
+    EXPECT_EQ(std::accumulate(inPieces.begin(), inPieces.end(), 0), 301 * 201);
+    EXPECT_EQ(std::accumulate(bigger.begin(), bigger.end(), 0), 303 * 203);
+    EXPECT_EQ(*std::max_element(bigger.begin(), bigger.end()), 1);
+}
+
 
 TEST(GridLayout, isGivenAnAMRIndexBoxAtConstruction)
 {

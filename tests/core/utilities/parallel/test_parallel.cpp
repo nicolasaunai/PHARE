@@ -304,6 +304,42 @@ TEST(Chunks, coverTheRangeOnceInOrder)
 }
 
 
+TEST(ParallelForPieces, coverTheRangeOnceWithConsecutivePieces)
+{
+    Threads const threads{4};
+
+    std::size_t const n = 10000, grain = 1000;
+    std::vector<int> visits(n, 0);
+    std::atomic<std::size_t> nPieces{0};
+
+    parallel_for_pieces(n, grain, [&](std::size_t const first, std::size_t const last) {
+        EXPECT_LT(first, last);
+        EXPECT_GE(last - first, grain);
+        ++nPieces;
+        for (auto i = first; i < last; ++i)
+            ++visits[i];
+    });
+
+    EXPECT_EQ(nPieces, 10u);
+    EXPECT_TRUE(std::all_of(visits.begin(), visits.end(), [](int const v) { return v == 1; }));
+}
+
+TEST(ParallelForPieces, isOneCallWithOneThreadOrFewItems)
+{
+    std::size_t calls = 0;
+    parallel_for_pieces(10000, 1000, [&](std::size_t const first, std::size_t const last) {
+        ++calls;
+        EXPECT_EQ(first, 0u);
+        EXPECT_EQ(last, 10000u);
+    });
+    EXPECT_EQ(calls, 1u);
+
+    Threads const threads{4};
+    calls = 0;
+    parallel_for_pieces(999, 1000, [&](std::size_t, std::size_t) { ++calls; });
+    EXPECT_EQ(calls, 1u);
+}
+
 TEST(Chunks, areOneWithOneThread)
 {
     EXPECT_EQ(nbrChunks(1000000, 100), 1u);

@@ -5,6 +5,7 @@
 #include "core/def.hpp"
 
 #include "core/utilities/span.hpp"
+#include "core/utilities/parallel.hpp"
 #include "core/utilities/types.hpp"
 #include "core/data/field/field.hpp"
 #include "core/data/field/recentered_field.hpp"
@@ -66,15 +67,20 @@ namespace core
 namespace PHARE::core
 {
 
+// nodes of a field in a piece of a loop over them all, see core::parallel_for_pieces
+inline constexpr std::size_t nodesPerPiece = 16384;
+
 template<Spannable Span>
 void average(Span const& f1, Span const& f2, Span& avg)
 {
-    auto const size = f1.size();
-    auto const d1   = f1.data();
-    auto const d2   = f2.data();
-    auto av         = avg.data();
-    for (std::size_t i = 0; i < size; ++i)
-        av[i] = (d1[i] + d2[i]) * .5;
+    auto const d1 = f1.data();
+    auto const d2 = f2.data();
+    auto av       = avg.data();
+    parallel_for_pieces(f1.size(), nodesPerPiece,
+                        [&](std::size_t const first, std::size_t const last) {
+                            for (auto i = first; i < last; ++i)
+                                av[i] = (d1[i] + d2[i]) * .5;
+                        });
 }
 
 // TODO benchmark several ways of converting to primal

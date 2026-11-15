@@ -50,9 +50,9 @@ public:
 
         auto eval = [&](auto& Jc, auto&& fn) {
             if constexpr (box.mode == AmpereMode::ShrinkedGhost)
-                layout_.evalOnShrinkedGhostBox(Jc, amount, fn);
+                layout_.evalOnShrinkedGhostBoxInPieces(Jc, amount, fn);
             else
-                layout_.evalOnBiggerBox(Jc, amount, fn);
+                layout_.evalOnBiggerBoxInPieces(Jc, amount, fn);
         };
 
         auto const curlB = curl(layout_, B);

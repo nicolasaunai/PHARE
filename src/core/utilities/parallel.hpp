@@ -485,6 +485,20 @@ inline auto chunk(std::size_t const n, std::size_t const nChunks, std::size_t co
     return Bounds{c * n / nChunks, (c + 1) * n / nChunks};
 }
 
+
+// fn(first, last) for consecutive pieces [first, last) that cover [0, n), on the threads of the
+// process when n holds several pieces of grain items: for work on an item that touches nothing
+// of the other items. One call fn(0, n) with one thread, or when n is short.
+template<typename Fn>
+void parallel_for_pieces(std::size_t const n, std::size_t const grain, Fn&& fn)
+{
+    auto const nPieces = nbrChunks(n, grain);
+    parallel_for(nPieces, [&](std::size_t const p) {
+        auto const piece = chunk(n, nPieces, p);
+        fn(piece.first, piece.last);
+    });
+}
+
 } // namespace PHARE::core
 
 #endif // PHARE_CORE_UTILITIES_PARALLEL_HPP

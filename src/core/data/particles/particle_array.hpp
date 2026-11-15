@@ -212,6 +212,17 @@ public:
             cellMap_.update(particleIndex, oldCell, newCell);
     }
 
+    // the same for the cells whose first index is in [firstRow, lastRow) only, see
+    // CellMap::update: for threads that share out the cells of the box
+    template<typename Cell>
+    void cell_changed(Cell const& oldCell, Cell const& newCell, std::size_t particleIndex,
+                      int const firstRow, int const lastRow)
+    {
+        auto const box_is_valid = box_.size() > 1;
+        if (box_is_valid)
+            cellMap_.update(particleIndex, oldCell, newCell, firstRow, lastRow);
+    }
+
 
     template<typename Predicate>
     auto partition(Predicate&& pred)

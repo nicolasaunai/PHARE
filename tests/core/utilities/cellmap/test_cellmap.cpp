@@ -78,6 +78,51 @@ TEST(CellMap, resetGivesAnEmptyMapOverTheNewBox)
     EXPECT_EQ(cm.size({4, 60}), 1);
 }
 
+// threads share out the cells of a map by their first index to apply the same updates
+TEST(CellMap, updatesAppliedRowRangeByRowRangeGiveTheSameLists)
+{
+    Box<int, 2> const box{{10, 12}, {30, 32}};
+    CellMap<2, int> oneGo{box}, byRows{box};
+
+    struct Update
+    {
+        std::size_t index;
+        std::array<int, 2> oldCell, newCell;
+    };
+    std::vector<Update> updates;
+    std::mt19937 gen{1337};
+    std::uniform_int_distribution<int> x{10, 30}, y{12, 32}, move{-1, 1};
+    for (std::size_t i = 0; i < 500; ++i)
+    {
+        std::array<int, 2> const cell{x(gen), y(gen)};
+        oneGo.addToCell(cell, i);
+        byRows.addToCell(cell, i);
+        // twice, as the two position updates of a push; some leave the box
+        std::array<int, 2> const second{cell[0] + move(gen), cell[1] + move(gen)};
+        std::array<int, 2> const third{second[0] + move(gen), second[1] + move(gen)};
+        if (isIn(Point{second}, box))
+        {
+            updates.push_back({i, cell, second});
+            updates.push_back({i, second, third});
+        }
+    }
+
+    for (auto const& [index, oldCell, newCell] : updates)
+        oneGo.update(index, oldCell, newCell);
+
+    // any order of the ranges: they do not touch the same lists
+    for (auto const& [first, last] : std::vector<std::pair<int, int>>{{24, 31}, {10, 17}, {17, 24}})
+        for (auto const& [index, oldCell, newCell] : updates)
+            byRows.update(index, oldCell, newCell, first, last);
+
+    for_each_point(box, [&](auto const& cell) {
+        auto const& expected = oneGo(cell);
+        auto const& actual   = byRows(cell);
+        ASSERT_EQ(expected.size(), actual.size());
+        EXPECT_TRUE(std::equal(expected.begin(), expected.end(), actual.begin()));
+    });
+}
+
 TEST(CellMap, canSortCells)
 {
     auto constexpr dim = 2u;

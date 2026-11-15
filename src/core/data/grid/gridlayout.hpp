@@ -6,6 +6,7 @@
 #include "core/utilities/types.hpp"
 #include "core/utilities/box/box.hpp"
 #include "core/utilities/constants.hpp"
+#include "core/utilities/parallel.hpp"
 #include "core/utilities/box/box_spans.hpp"
 #include "core/utilities/index/index.hpp"
 #include "core/utilities/point/point.hpp"
@@ -995,6 +996,30 @@ namespace core
         {
             evalOnAnyBox(ghostBoxFor(field), fn);
         }
+
+        // The same loops for a fn(i...) that writes nothing another point reads or writes:
+        // a large box is cut in pieces run by the threads of the process, see
+        // core::parallel_for_pieces. With many small patches each is one piece.
+        template<typename Field, typename Fn>
+        void evalOnBoxInPieces(Field& field, Fn&& fn) const
+        {
+            evalOnAnyBoxInPieces(domainBoxFor(field), fn);
+        }
+
+        template<typename Field, typename Fn>
+        void evalOnBiggerBoxInPieces(Field& field, Point<std::uint32_t, dimension> const& grow,
+                                     Fn&& fn) const
+        {
+            evalOnAnyBoxInPieces(core::grow(domainBoxFor(field), grow), fn);
+        }
+
+        template<typename Field, typename Fn>
+        void evalOnShrinkedGhostBoxInPieces(Field& field,
+                                            Point<std::uint32_t, dimension> const& shrink,
+                                            Fn&& fn) const
+        {
+            evalOnAnyBoxInPieces(core::shrink(ghostBoxFor(field), shrink), fn);
+        }
         auto levelNumber() const { return levelNumber_; }
 
 
@@ -1016,6 +1041,26 @@ namespace core
     private:
         // calls fn(ix[, iy[, iz]]) once per point of box, walking it span by span
         // (see for_each_point in core/utilities/box/box_spans.hpp)
+        // the box cut along its first direction
+        void evalOnAnyBoxInPieces(auto const& box, auto& fn) const
+        {
+            auto constexpr pointsPerPiece = std::size_t{8192};
+
+            if (box.upper[0] < box.lower[0])
+                return;
+            auto const nRows        = static_cast<std::size_t>(box.upper[0] - box.lower[0]) + 1;
+            auto const pointsPerRow = std::max<std::size_t>(box.size() / nRows, 1);
+            auto const rowsPerPiece = std::max<std::size_t>(pointsPerPiece / pointsPerRow, 1);
+
+            parallel_for_pieces(nRows, rowsPerPiece,
+                                [&](std::size_t const first, std::size_t const last) {
+                                    auto piece     = box;
+                                    piece.upper[0] = box.lower[0] + (last - 1);
+                                    piece.lower[0] = box.lower[0] + first;
+                                    evalOnAnyBox(piece, fn);
+                                });
+        }
+
         void evalOnAnyBox(auto const& box, auto& fn) const
         {
             for_each_point(box, [&](auto& point) {

@@ -1,6 +1,7 @@
 #ifndef PHARE_ELECTRONS_HPP
 #define PHARE_ELECTRONS_HPP
 
+#include "core/utilities/parallel.hpp"
 #include "core/def.hpp"
 #include "core/models/quantities/hybrid_quantities.hpp"
 #include "core/data/vecfield/vecfield_component.hpp"
@@ -84,7 +85,7 @@ public:
         auto& Vez = Ve_(Component::Z);
 
         // from Ni because all components defined on primal
-        layout.evalOnBox(Ne, [&](auto const&... args) {
+        layout.evalOnBoxInPieces(Ne, [&](auto const&... args) {
             auto arr = std::array{args...};
 
             auto const JxOnVx = GridLayout::template project<Scalar::Jx, Scalar::Vx>(Jx, arr);
@@ -167,8 +168,11 @@ public:
             throw std::runtime_error("Error - isothermal closure pressure not usable");
 
         auto const& Ne_ = ions_.chargeDensity();
-        std::transform(std::begin(Ne_), std::end(Ne_), std::begin(Pe_),
-                       [this](auto n) { return n * Te_; });
+        parallel_for_pieces(
+            Ne_.size(), nodesPerPiece, [&](std::size_t const first, std::size_t const last) {
+                std::transform(std::begin(Ne_) + first, std::begin(Ne_) + last,
+                               std::begin(Pe_) + first, [this](auto n) { return n * Te_; });
+            });
     }
 
 private:

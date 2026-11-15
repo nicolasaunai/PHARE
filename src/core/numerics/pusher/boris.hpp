@@ -337,15 +337,43 @@ private:
         };
     }
 
-    // the cell map of the array learns the changes of cell noted by the pieces, in the order one
-    // thread pushing the whole range in two loops would have made them
+    // The cell map of the array learns the changes of cell noted by the pieces, in the order one
+    // thread pushing the whole range in two loops would have made them.
+    // When there are many, the threads share out the cells of the map by their first index:
+    // each goes through all the changes in that order, for the lists of its own cells.
     static void replay_(std::vector<CellChanges> const& prePush,
                         std::vector<CellChanges> const& postPush, ParticleArray_t& particles)
     {
+        auto constexpr changesPerPiece = std::size_t{8192};
+
+        std::size_t nChanges = 0;
         for (auto const* const pass : {&prePush, &postPush})
             for (auto const& piece : *pass)
-                for (auto const& [idx, oldCell, newCell] : piece.changes)
-                    particles.cell_changed(oldCell, newCell, idx);
+                nChanges += piece.changes.size();
+
+        auto const& box    = particles.box();
+        auto const nRows   = static_cast<std::size_t>(box.upper[0] - box.lower[0] + 1);
+        auto const nPieces = std::min(nbrChunks(nChanges, changesPerPiece), nRows);
+
+        if (nPieces <= 1)
+        {
+            for (auto const* const pass : {&prePush, &postPush})
+                for (auto const& piece : *pass)
+                    for (auto const& [idx, oldCell, newCell] : piece.changes)
+                        particles.cell_changed(oldCell, newCell, idx);
+            return;
+        }
+
+        parallel_for(nPieces, [&](std::size_t const p) {
+            auto const rows  = chunk(nRows, nPieces, p);
+            auto const first = box.lower[0] + static_cast<int>(rows.first);
+            auto const last  = box.lower[0] + static_cast<int>(rows.last);
+
+            for (auto const* const pass : {&prePush, &postPush})
+                for (auto const& piece : *pass)
+                    for (auto const& [idx, oldCell, newCell] : piece.changes)
+                        particles.cell_changed(oldCell, newCell, idx, first, last);
+        });
     }
 
 

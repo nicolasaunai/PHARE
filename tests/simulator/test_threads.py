@@ -9,7 +9,11 @@ moments and particles, on both levels, bit for bit. This is checked with patches
 particles (one piece, many patches per thread) and of many particles (several pieces).
 
 One thread pushes, selects, then deposits: nodes sum the same particles in another order, and
-the files agree with the threaded ones to rounding.
+the files agree with the threaded ones to rounding. Fields and moments are written in single
+precision, particles in double precision: rounding is that of the file.
+
+A patch larger than the others have threads for also has its field solvers, moments and cell
+lists cut in pieces: same checks with one large patch on the coarse level.
 """
 
 import os
@@ -34,7 +38,7 @@ final_time = time_step * time_step_nbr
 diag_dir = "phare_outputs/threads"
 
 
-def config(diag_subdir, largest_patch_size, ppc):
+def config(diag_subdir, largest_patch_size, ppc, cells=cells):
     sim = ph.Simulation(
         time_step=time_step,
         time_step_nbr=time_step_nbr,
@@ -92,8 +96,12 @@ def config(diag_subdir, largest_patch_size, ppc):
     timestamps = [0.0, final_time]
     for quantity in ["E", "B"]:
         ph.ElectromagDiagnostics(quantity=quantity, write_timestamps=timestamps)
-    for quantity in ["charge_density", "bulkVelocity"]:
+    for quantity in ["charge_density", "bulkVelocity", "momentum_tensor"]:
         ph.FluidDiagnostics(quantity=quantity, write_timestamps=timestamps)
+    # deposited from the particles when it is written, patch by patch on the threads
+    ph.FluidDiagnostics(
+        quantity="momentum_tensor", write_timestamps=timestamps, population_name="protons"
+    )
     ph.ParticleDiagnostics(
         quantity="domain", write_timestamps=timestamps, population_name="protons"
     )
@@ -150,7 +158,9 @@ class ThreadsTest(SimulatorTest):
                     self.assertTrue(np.array_equal(a[key], b[key]), f"{name}:{key} differs")
                     continue
                 scale = np.nanmax(np.abs(a[key])) if a[key].size else 0.0
-                close = np.allclose(a[key], b[key], rtol=0, atol=rtol * scale, equal_nan=True)
+                # a value written in single precision is within a few steps of that precision
+                stored = max(rtol, 4 * np.finfo(a[key].dtype).eps)
+                close = np.allclose(a[key], b[key], rtol=0, atol=stored * scale, equal_nan=True)
                 self.assertTrue(close, f"{name}:{key} differs by more than rounding")
 
     def test_small_patches_same_files_on_two_and_four_threads(self):
@@ -170,6 +180,18 @@ class ThreadsTest(SimulatorTest):
         one = self.run_with(1, "large", **case)
         two = self.run_with(2, "large", **case)
         four = self.run_with(4, "large", **case)
+
+        if cpp.mpi_rank() == 0:
+            self.assert_same_files(two, four)
+            self.assert_close_files(one, four, rtol=1e-12)
+
+
+    def test_one_large_patch_same_files_on_two_and_four_threads(self):
+        # 160 x 120 cells in one patch: fields, moments and cell lists in pieces too
+        case = dict(largest_patch_size=None, ppc=20, cells=(160, 120))
+        one = self.run_with(1, "one_patch", **case)
+        two = self.run_with(2, "one_patch", **case)
+        four = self.run_with(4, "one_patch", **case)
 
         if cpp.mpi_rank() == 0:
             self.assert_same_files(two, four)
