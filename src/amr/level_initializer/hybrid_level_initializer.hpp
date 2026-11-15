@@ -91,15 +91,16 @@ namespace solver
             // overlapping patches were each filled over their whole domain,
             // keep particles only on the patch owning their cell
             auto const neighbours = amr::makeSameLevelNeighbors(*hierarchy, levelNumber);
-            amr::onLevel(ions_accessor, [&](auto& view) {
+            amr::concurrentOnLevel(ions_accessor, [&](auto& view) {
                 auto& [ions] = view.args;
                 ions.eraseDomainParticlesIn(view.nonOwnedBoxes(neighbours));
             });
 
             // now all particles are here, we must compute moments.
-            amr::onLevel(ions_accessor, [&](auto& view) {
+            amr::concurrentOnLevel(ions_accessor, [&](auto& view) {
                 auto& [ions] = view.args;
                 core::resetMoments(ions);
+                // depositParticles works on its own copy of the interpolator
                 core::depositParticles(ions, view.layout, interpolate_, core::DomainDeposit{});
             });
 
@@ -112,7 +113,7 @@ namespace solver
 
             // the only remaning incomplete nodes are those next to and on level ghost layers
             // we now complete them by depositing levelghost particles
-            amr::onLevel(ions_accessor, [&](auto& view) {
+            amr::concurrentOnLevel(ions_accessor, [&](auto& view) {
                 auto& [ions] = view.args;
                 if (!isRootLevel(levelNumber))
                     core::depositParticles(ions, view.layout, interpolate_,
@@ -144,11 +145,12 @@ namespace solver
             // regrid paths and initLevel has done it on new finer levels
             if (!isRegridding and isRootLevel(levelNumber))
             {
-                amr::onLevel(amr::make_model_level_accessor(level, hybridModel, state.electrons),
-                             [&](auto& view) {
-                                 auto& [electrons] = view.args;
-                                 electrons.update(view.layout);
-                             });
+                amr::concurrentOnLevel(
+                    amr::make_model_level_accessor(level, hybridModel, state.electrons),
+                    [&](auto& view) {
+                        auto& [electrons] = view.args;
+                        electrons.update(view.layout);
+                    });
 
                 Ohm_t{ohm_info, level, hybridModel}(state.electromag.B, state.J, state.electromag.E,
                                                     state.electrons);

@@ -5,11 +5,15 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <vector>
 #include <cassert>
+#include <cstddef>
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <stdexcept>
 
+#include "core/utilities/parallel.hpp"
 #include "core/data/grid/gridlayoutdefs.hpp"
 #include "core/models/quantities/hybrid_quantities.hpp"
 #include "core/utilities/types.hpp"
@@ -211,37 +215,67 @@ void MaxwellianParticleInitializer<ParticleArray, GridLayout>::loadParticles(
         = (surface_cell_count_(layout.AMRBox()) * (nbrParticlePerCell_ * over_alloc_factor_));
     particles.reserve(expected_size + incoming_estimate);
 
-    for (std::size_t flatCellIdx = 0; flatCellIdx < ndCellIndices.size(); ++flatCellIdx)
+    // Cells draw their particles from their own random sequence: pieces of the cells are loaded
+    // by the threads of the process, see core::parallel_for, each particle at the index a loop
+    // over all the cells would give it. The user functions were all called above, on this
+    // thread.
+    auto const nCells    = ndCellIndices.size();
+    auto const nPieces   = nbrChunks(nCells, std::max<std::size_t>(4096 / nbrParticlePerCell_, 1));
+    auto const firstLoad = particles.size();
+    particles.resize(firstLoad + expected_size);
+
+    // index of the first particle of each piece: cells under the density cut-off have none
+    std::vector<std::size_t> firstOfPiece(nPieces, firstLoad);
+    for (std::size_t p = 1; p < nPieces; ++p)
     {
-        if (n[flatCellIdx] < densityCutOff_)
-            continue;
+        auto const previous = chunk(nCells, nPieces, p - 1);
+        firstOfPiece[p]     = firstOfPiece[p - 1]
+                          + nbrParticlePerCell_
+                                * std::count_if(n + previous.first, n + previous.last,
+                                                [&](auto const& density_value) {
+                                                    return density_value >= densityCutOff_;
+                                                });
+    }
 
-        auto const cellWeight = n[flatCellIdx] / nbrParticlePerCell_;
-        auto const iCell      = icell(flatCellIdx, ndCellIndices);
-        SplitMix64 randGen{cell_key(seed, populationKey_, layout.levelNumber(), iCell)};
-        ParticleDeltaDistribution<double> deltaDistrib;
-        std::array<double, 3> particleVelocity;
-        std::array<std::array<double, 3>, 3> basis;
+    parallel_for(nPieces, [&](std::size_t const p) {
+        auto const cells   = chunk(nCells, nPieces, p);
+        auto particleIndex = firstOfPiece[p];
 
-        if (basis_ == Basis::Magnetic)
+        for (auto flatCellIdx = cells.first; flatCellIdx < cells.last; ++flatCellIdx)
         {
-            auto const B = fns.B();
-            localMagneticBasis({B[0][flatCellIdx], B[1][flatCellIdx], B[2][flatCellIdx]}, basis);
-        }
+            if (n[flatCellIdx] < densityCutOff_)
+                continue;
 
-        for (std::uint32_t ipart = 0; ipart < nbrParticlePerCell_; ++ipart)
-        {
-            maxwellianVelocity({V[0][flatCellIdx], V[1][flatCellIdx], V[2][flatCellIdx]},
-                               {Vth[0][flatCellIdx], Vth[1][flatCellIdx], Vth[2][flatCellIdx]}, //
-                               randGen, particleVelocity);
+            auto const cellWeight = n[flatCellIdx] / nbrParticlePerCell_;
+            auto const iCell      = icell(flatCellIdx, ndCellIndices);
+            SplitMix64 randGen{cell_key(seed, populationKey_, layout.levelNumber(), iCell)};
+            ParticleDeltaDistribution<double> deltaDistrib;
+            std::array<double, 3> particleVelocity;
+            std::array<std::array<double, 3>, 3> basis;
 
             if (basis_ == Basis::Magnetic)
-                particleVelocity = basisTransform(basis, particleVelocity);
+            {
+                auto const B = fns.B();
+                localMagneticBasis({B[0][flatCellIdx], B[1][flatCellIdx], B[2][flatCellIdx]},
+                                   basis);
+            }
 
-            particles.emplace_back(
-                Particle{cellWeight, iCell, deltas(deltaDistrib, randGen), particleVelocity});
+            for (std::uint32_t ipart = 0; ipart < nbrParticlePerCell_; ++ipart, ++particleIndex)
+            {
+                maxwellianVelocity(
+                    {V[0][flatCellIdx], V[1][flatCellIdx], V[2][flatCellIdx]},
+                    {Vth[0][flatCellIdx], Vth[1][flatCellIdx], Vth[2][flatCellIdx]}, //
+                    randGen, particleVelocity);
+
+                if (basis_ == Basis::Magnetic)
+                    particleVelocity = basisTransform(basis, particleVelocity);
+
+                particles[particleIndex]
+                    = Particle{cellWeight, iCell, deltas(deltaDistrib, randGen), particleVelocity};
+                particles.map_particle(particleIndex);
+            }
         }
-    }
+    });
 }
 
 } // namespace PHARE::core

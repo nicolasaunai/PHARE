@@ -157,6 +157,10 @@ public:
 
 
     void map_particles() const { cellMap_.add(particles_); }
+
+    // registers in the cell map a particle written with operator[], as emplace_back does for
+    // the one it adds. Threads may call it at the same time for particles of different cells.
+    void map_particle(std::size_t particleIndex) { cellMap_.add(particles_, particleIndex); }
     void empty_map() { cellMap_.empty(); }
 
 

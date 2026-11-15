@@ -12,7 +12,8 @@ Settings come from the environment so one script serves every run of a scan:
   BENCH_PATCH      largest_patch_size, 25: this sets how many patches a thread can pick from
   BENCH_DIAG_DIR   where to write E, B, moments and particles at the last step, none if unset
 
-Prints one line "BENCH key=value ..." on rank 0 with the wall time of the advance loop.
+Prints one line "BENCH key=value ..." on rank 0 with the wall times of the initialization and of
+the advance loop.
 """
 
 import os
@@ -135,7 +136,9 @@ def config():
 
 def main():
     simulator = Simulator(config(), print_one_line=False)
+    start = time.perf_counter()
     simulator.initialize()
+    initialize = time.perf_counter() - start
 
     start = time.perf_counter()
     while simulator.currentTime() < final_time - time_step / 2:
@@ -152,6 +155,7 @@ def main():
             f"levels={levels}",
             f"patch={largest_patch_size}",
             f"steps={steps}",
+            f"init_s={initialize:.3f}",
             f"advance_s={advance:.3f}",
             flush=True,
         )
