@@ -377,11 +377,12 @@ namespace amr
 
             domainGhostPartRefiners_.fill(level.getLevelNumber(), fillTime);
 
-            amr::onLevel(amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_, ions),
-                         [&](auto& view) {
-                             for (auto& pop : std::get<0>(view.args))
-                                 pop.patchGhostParticles().clear();
-                         });
+            amr::concurrentOnLevel(
+                amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_, ions),
+                [&](auto& view) {
+                    for (auto& pop : std::get<0>(view.args))
+                        pop.patchGhostParticles().clear();
+                });
         }
 
 
@@ -400,7 +401,7 @@ namespace amr
                 = amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_, ions, sumVec_);
             for (std::size_t i = 0; i < ions.size(); ++i)
             {
-                amr::onLevel(accessor, [&](auto& view) {
+                amr::concurrentOnLevel(accessor, [&](auto& view) {
                     auto& [ions_v, sumVec] = view.args;
                     for (std::uint8_t c = 0; c < N; ++c)
                         std::memcpy(sumVec[c].data(), ions_v[i].flux()[c].data(),
@@ -409,7 +410,7 @@ namespace amr
 
                 popFluxBorderSumRefiners_[i].fill(level.getLevelNumber(), fillTime);
 
-                amr::onLevel(accessor, [&](auto& view) {
+                amr::concurrentOnLevel(accessor, [&](auto& view) {
                     auto& [ions_v, sumVec] = view.args;
                     for (std::uint8_t c = 0; c < N; ++c)
                         std::memcpy(ions_v[i].flux()[c].data(), sumVec[c].data(),
@@ -429,7 +430,7 @@ namespace amr
                 = amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_, ions, sumField_);
             for (std::size_t i = 0; i < ions.size(); ++i)
             {
-                amr::onLevel(accessor, [&](auto& view) {
+                amr::concurrentOnLevel(accessor, [&](auto& view) {
                     auto& [ions_v, sumField] = view.args;
                     std::memcpy(sumField.data(), ions_v[i].particleDensity().data(),
                                 ions_v[i].particleDensity().size() * sizeof(value_type));
@@ -437,7 +438,7 @@ namespace amr
 
                 popDensityBorderSumRefiners_[i].fill(level.getLevelNumber(), fillTime);
 
-                amr::onLevel(accessor, [&](auto& view) {
+                amr::concurrentOnLevel(accessor, [&](auto& view) {
                     auto& [ions_v, sumField] = view.args;
                     std::memcpy(ions_v[i].particleDensity().data(), sumField.data(),
                                 ions_v[i].particleDensity().size() * sizeof(value_type));
@@ -588,15 +589,15 @@ namespace amr
             PHARE_LOG_SCOPE(3, "HybridHybridMessengerStrategy::prepareStep");
 
             auto& state = static_cast<HybridModel&>(model).state;
-            amr::onLevel(amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_,
-                                                               state.electromag, Bold_, Eold_),
-                         [&](auto& view) {
-                             auto& [electromag, Bold, Eold] = view.args;
-                             view.setTime(currentTime, Bold, Eold);
+            amr::concurrentOnLevel(amr::make_level_accessor<GridLayoutT>(
+                                       level, *resourcesManager_, state.electromag, Bold_, Eold_),
+                                   [&](auto& view) {
+                                       auto& [electromag, Bold, Eold] = view.args;
+                                       view.setTime(currentTime, Bold, Eold);
 
-                             Bold.copyData(electromag.B);
-                             Eold.copyData(electromag.E);
-                         });
+                                       Bold.copyData(electromag.B);
+                                       Eold.copyData(electromag.E);
+                                   });
         }
 
 

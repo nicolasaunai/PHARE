@@ -8,7 +8,7 @@ Settings come from the environment so one script serves every run of a scan:
   BENCH_CELLS      level 0 cells, "400x200"
   BENCH_PPC        particles per cell, 100
   BENCH_STEPS      coarse time steps, 20
-  BENCH_LEVELS     1 (no refinement) or 2 (one refined box around both sheets), 1
+  BENCH_LEVELS     1 (no refinement) or 2 (one refined box over both sheets), 1
   BENCH_PATCH      largest_patch_size, 25: this sets how many patches a thread can pick from
   BENCH_DIAG_DIR   where to write E, B, moments and particles at the last step, none if unset
 
@@ -43,12 +43,11 @@ def config():
 
     refinement = {}
     if levels == 2:
-        # one box over the middle half in y, where both current sheets are
-        refinement = {
-            "refinement_boxes": {
-                "L0": {"B0": [(0, cells[1] // 4), (cells[0] - 1, 3 * cells[1] // 4 - 1)]}
-            }
-        }
+        # one box over the middle half in y, where both current sheets are, clear of the
+        # periodic x boundaries
+        lower = (cells[0] // 8, cells[1] // 4)
+        upper = (7 * cells[0] // 8 - 1, 3 * cells[1] // 4 - 1)
+        refinement = {"refinement_boxes": {"L0": {"B0": [lower, upper]}}}
 
     diag_options = {}
     if diag_dir:

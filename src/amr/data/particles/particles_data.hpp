@@ -10,6 +10,7 @@
 #include "core/data/ions/ion_population/particle_pack.hpp"
 
 #include "amr/samrai.hpp"
+#include "amr/data/exchange_jobs.hpp"
 #include "amr/utilities/box/amr_box.hpp"
 #include "amr/resources_manager/amr_utils.hpp"
 #include <amr/data/particles/particles_variable_fill_pattern.hpp>
@@ -26,6 +27,7 @@
 #include <tuple>
 #include <vector>
 #include <cstddef>
+#include <cstring>
 #include <stdexcept>
 
 
@@ -255,6 +257,8 @@ namespace amr
         {
             PHARE_LOG_SCOPE(3, "ParticlesData::copy with overlap");
 
+            ExchangeJobs::instance().settle();
+
             // casts throw on failure
             auto& pSource = dynamic_cast<ParticlesData const&>(source);
 
@@ -273,6 +277,41 @@ namespace amr
                    [[maybe_unused]] SAMRAI::hier::BoxOverlap const& overlap) const override
         {
             throw std::runtime_error("Cannot cast");
+        }
+
+
+        // The Fuseable calls are the ones SAMRAI lets patch data postpone to the end of the
+        // phase its schedule is in, see ExchangeJobs
+        void copyFuseable(SAMRAI::hier::PatchData const& source,
+                          SAMRAI::hier::BoxOverlap const& overlap) override
+        {
+            copyOrDefer(this, [this, &source, &overlap]() { copy(source, overlap); });
+        }
+
+        void packStreamFuseable(SAMRAI::tbox::MessageStream& stream,
+                                SAMRAI::hier::BoxOverlap const& overlap) const override
+        {
+            packOrDefer(stream, getDataStreamSize(overlap),
+                        [this, &overlap](auto& part) { packStream(part, overlap); });
+        }
+
+        void unpackStreamFuseable(SAMRAI::tbox::MessageStream& stream,
+                                  SAMRAI::hier::BoxOverlap const& overlap) override
+        {
+            // what unpackStream reads: nothing for an empty cell overlap, otherwise a number of
+            // particles then the particles
+            auto const* const cells = dynamic_cast<SAMRAI::pdat::CellOverlap const*>(&overlap);
+            if (!ExchangeJobs::instance().recording() or (cells and cells->isOverlapEmpty()))
+                return unpackStream(stream, overlap);
+
+            std::size_t numberParticles = 0;
+            std::memcpy(&numberParticles,
+                        static_cast<char const*>(stream.getBufferStart()) + stream.getCurrentSize(),
+                        sizeof(numberParticles));
+
+            unpackOrDefer(this, stream,
+                          sizeof(numberParticles) + numberParticles * sizeof(Particle_t),
+                          [this, &overlap](auto& part) { unpackStream(part, overlap); });
         }
 
 
@@ -356,6 +395,8 @@ namespace amr
         {
             PHARE_LOG_SCOPE(3, "ParticleData::packStream");
 
+            ExchangeJobs::instance().settle();
+
             if (auto particleOverlap = dynamic_cast<ParticlesDomainOverlap const*>(&overlap))
             {
                 pack_from_ghost(stream, *particleOverlap);
@@ -437,6 +478,8 @@ namespace amr
         {
             PHARE_LOG_SCOPE(3, "ParticleData::unpackStream");
 
+            ExchangeJobs::instance().settle();
+
             if (auto* particleOverlap = dynamic_cast<ParticlesDomainOverlap const*>(&overlap))
                 unpack_from_ghost(stream, *particleOverlap);
 
@@ -474,7 +517,8 @@ namespace amr
         //! physical end index"
         SAMRAI::hier::Box interiorLocalBox_;
         std::string name_;
-        static inline core::MinimizingVector<Particle_t> tmp; // LESS ALLOCATIONS
+        // LESS ALLOCATIONS, one per thread: packs and unpacks run concurrently (ExchangeJobs)
+        static inline thread_local core::MinimizingVector<Particle_t> tmp;
 
 
         void copy_(SAMRAI::hier::Box const& overlapBox, ParticlesData const& sourceData)
