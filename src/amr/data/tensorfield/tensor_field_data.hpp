@@ -9,6 +9,7 @@
 #include "core/data/tensorfield/tensorfield.hpp"
 
 #include "amr/samrai.hpp"
+#include "amr/data/exchange_jobs.hpp"
 #include "amr/data/field/field_geometry.hpp"
 #include "amr/resources_manager/amr_utils.hpp"
 #include "amr/data/tensorfield/tensor_field_overlap.hpp"
@@ -182,11 +183,35 @@ public:
     {
         PHARE_LOG_SCOPE(3, "TensorFieldData::copy");
 
+        ExchangeJobs::instance().settle();
+
         // casts throw on failure
         auto& fieldSource  = dynamic_cast<TensorFieldData const&>(source);
         auto& fieldOverlap = dynamic_cast<TensorFieldOverlap_t const&>(overlap);
 
         copy_(fieldSource, fieldOverlap);
+    }
+
+    // The Fuseable calls are the ones SAMRAI lets patch data postpone to the end of the phase its
+    // schedule is in, see ExchangeJobs
+    void copyFuseable(SAMRAI::hier::PatchData const& source,
+                      SAMRAI::hier::BoxOverlap const& overlap) final
+    {
+        copyOrDefer(this, [this, &source, &overlap]() { copy(source, overlap); });
+    }
+
+    void packStreamFuseable(SAMRAI::tbox::MessageStream& stream,
+                            SAMRAI::hier::BoxOverlap const& overlap) const final
+    {
+        packOrDefer(stream, getDataStreamSize_(overlap),
+                    [this, &overlap](auto& part) { packStream(part, overlap); });
+    }
+
+    void unpackStreamFuseable(SAMRAI::tbox::MessageStream& stream,
+                              SAMRAI::hier::BoxOverlap const& overlap) final
+    {
+        unpackOrDefer(this, stream, getDataStreamSize_(overlap),
+                      [this, &overlap](auto& part) { unpackStream(part, overlap); });
     }
 
 
@@ -231,6 +256,8 @@ public:
                     SAMRAI::hier::BoxOverlap const& overlap) const final
     {
         PHARE_LOG_SCOPE(3, "TensorFieldData::packStream");
+
+        ExchangeJobs::instance().settle();
 
         std::size_t const expectedSize = getDataStreamSize_(overlap) / sizeof(value_type);
         core::ScratchWrite scratch;
@@ -281,6 +308,8 @@ public:
                       auto& dst_grids)
     {
         PHARE_LOG_SCOPE(3, "TensorFieldData::unpackStream");
+
+        ExchangeJobs::instance().settle();
 
         auto& tFieldOverlap = dynamic_cast<TensorFieldOverlap_t const&>(overlap);
 

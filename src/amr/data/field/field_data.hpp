@@ -8,6 +8,7 @@
 #include "core/data/field/field_box.hpp"
 
 #include "amr/samrai.hpp" // restarts
+#include "amr/data/exchange_jobs.hpp"
 #include "amr/resources_manager/amr_utils.hpp"
 
 #include "field_geometry.hpp"
@@ -166,11 +167,35 @@ namespace amr
         {
             PHARE_LOG_SCOPE(3, "FieldData::copy");
 
+            ExchangeJobs::instance().settle();
+
             // casts throw on failure
             auto& fieldSource  = dynamic_cast<FieldData const&>(source);
             auto& fieldOverlap = dynamic_cast<FieldOverlap const&>(overlap);
 
             copy_(fieldSource, fieldOverlap);
+        }
+
+        // The Fuseable calls are the ones SAMRAI lets patch data postpone to the end of the
+        // phase its schedule is in, see ExchangeJobs
+        void copyFuseable(SAMRAI::hier::PatchData const& source,
+                          SAMRAI::hier::BoxOverlap const& overlap) final
+        {
+            copyOrDefer(this, [this, &source, &overlap]() { copy(source, overlap); });
+        }
+
+        void packStreamFuseable(SAMRAI::tbox::MessageStream& stream,
+                                SAMRAI::hier::BoxOverlap const& overlap) const final
+        {
+            packOrDefer(stream, getDataStreamSize_(overlap),
+                        [this, &overlap](auto& part) { packStream(part, overlap); });
+        }
+
+        void unpackStreamFuseable(SAMRAI::tbox::MessageStream& stream,
+                                  SAMRAI::hier::BoxOverlap const& overlap) final
+        {
+            unpackOrDefer(this, stream, getDataStreamSize_(overlap),
+                          [this, &overlap](auto& part) { unpackStream(part, overlap); });
         }
 
 
@@ -215,6 +240,8 @@ namespace amr
                         SAMRAI::hier::BoxOverlap const& overlap) const final
         {
             PHARE_LOG_SCOPE(3, "packStream");
+
+            ExchangeJobs::instance().settle();
 
             auto& fieldOverlap = dynamic_cast<FieldOverlap const&>(overlap);
 
@@ -261,6 +288,8 @@ namespace amr
                           SAMRAI::hier::BoxOverlap const& overlap, Grid_t& dst_grid)
         {
             PHARE_LOG_SCOPE(3, "unpackStream");
+
+            ExchangeJobs::instance().settle();
 
             auto& fieldOverlap = dynamic_cast<FieldOverlap const&>(overlap);
 

@@ -3,6 +3,8 @@
 
 #include "core/logger.hpp"
 
+#include "amr/data/exchange_jobs.hpp"
+
 #include <SAMRAI/tbox/Dimension.h>
 #include <SAMRAI/hier/PatchLevel.h>
 #include <SAMRAI/hier/BoxOverlap.h>
@@ -153,9 +155,11 @@ void FieldBorderOpTransaction<FieldData_t, Operation>::packStream(
     SAMRAI::tbox::MessageStream& stream)
 {
     PHARE_LOG_SCOPE(3, "FieldBorderOpTransaction::packStream");
+    // this transaction is PHARE's own: its work can wait for the end of the schedule phase as
+    // SAMRAI's copy transactions do, see ExchangeJobs
     d_src_level->getPatch(d_src_node.getGlobalId())
         ->getPatchData(d_refine_data[d_item_id]->d_src)
-        ->packStream(stream, *d_overlap);
+        ->packStreamFuseable(stream, *d_overlap);
 }
 
 template<typename FieldData_t, typename Operation>
@@ -169,7 +173,10 @@ void FieldBorderOpTransaction<FieldData_t, Operation>::unpackStream(
                 ->getPatchData(d_refine_data[d_item_id]->d_scratch)));
     TBOX_ASSERT(onode_dst_data);
 
-    onode_dst_data->template unpackStreamAnd<Operation>(stream, *d_overlap);
+    unpackOrDefer(onode_dst_data.get(), stream, onode_dst_data->getDataStreamSize(*d_overlap),
+                  [dst = onode_dst_data, overlap = d_overlap](auto& part) {
+                      dst->template unpackStreamAnd<Operation>(part, *overlap);
+                  });
 }
 
 
@@ -198,7 +205,10 @@ void FieldBorderOpTransaction<FieldData_t, Operation>::copyLocalData()
                 ->getPatchData(d_refine_data[d_item_id]->d_src)));
     TBOX_ASSERT(onode_src_data);
 
-    onode_dst_data->template operate<Operation>(*onode_src_data, *d_overlap);
+    copyOrDefer(onode_dst_data.get(),
+                [dst = onode_dst_data, src = onode_src_data, overlap = d_overlap]() {
+                    dst->template operate<Operation>(*src, *overlap);
+                });
 }
 
 

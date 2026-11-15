@@ -11,7 +11,8 @@ namespace PHARE::core
 // The one scratch buffer for temporary field data, rather than static vectors per class or
 // function. Defined in field_scratch.cpp so there is one instance per linked phare_core, not one
 // per template instantiation: one per process if phare_core is shared, otherwise one per module
-// linking it, of which only the running simulator's is used. Access it through ScratchWrite or
+// linking it, of which only the running simulator's is used. Each thread has its own, as packs
+// and unpacks of a schedule run concurrently (ExchangeJobs). Access it through ScratchWrite or
 // ScratchRead below, which count the live holders so nested use cannot silently overwrite it.
 MinimizingVector<double>& field_scratch();
 

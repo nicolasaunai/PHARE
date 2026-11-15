@@ -19,6 +19,8 @@
 
 #include "core/def.hpp"
 
+#include "amr/data/exchange_jobs.hpp"
+
 
 namespace PHARE
 {
@@ -96,6 +98,8 @@ namespace amr
         void add(std::unique_ptr<Algorithm> const& algo, std::shared_ptr<Schedule>& schedule,
                  int levelNumber)
         {
+            // lets the copies, packs and unpacks of the schedule run on the process threads
+            schedule->setScheduleOpsStrategy(&ExchangeJobs::instance());
             schedules_[levelNumber][algo.get()] = schedule;
         }
 

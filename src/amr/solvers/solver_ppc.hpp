@@ -67,9 +67,14 @@ private:
 
     core::OhmInfo ohm_info;
     // the updater keeps a particle buffer and the interpolator's weights between calls, so
-    // each thread pushing a patch needs its own
+    // each thread pushing a patch needs its own. The weights are written for every particle:
+    // each updater sits on its own cache lines, or neighbours would slow each other down
+    struct alignas(64) PerThreadIonUpdater : IonUpdater_t
+    {
+        using IonUpdater_t::IonUpdater_t;
+    };
     initializer::PHAREDict ionUpdaterDict_;
-    std::vector<IonUpdater_t> ionUpdaterPerThread_;
+    std::vector<PerThreadIonUpdater> ionUpdaterPerThread_;
 
 
 public:

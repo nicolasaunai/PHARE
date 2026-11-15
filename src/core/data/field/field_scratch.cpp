@@ -4,13 +4,13 @@ namespace PHARE::core
 {
 MinimizingVector<double>& field_scratch()
 {
-    static MinimizingVector<double> buffer;
+    static thread_local MinimizingVector<double> buffer;
     return buffer;
 }
 
 int& field_scratch_holders()
 {
-    static int holders = 0;
+    static thread_local int holders = 0;
     return holders;
 }
 
