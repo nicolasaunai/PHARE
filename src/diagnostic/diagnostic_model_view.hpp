@@ -189,6 +189,15 @@ public:
             return tmpTensor_;
     }
 
+    // onIons(ions, layout) for every patch of the level, on the threads of the process: see
+    // amr::concurrentOnLevel. It must only touch the patch it is called for.
+    void onIonsOfLevel(auto& lvl, auto&& onIons)
+    {
+        amr::concurrentOnLevel(
+            amr::make_model_level_accessor(lvl, this->model_, this->model_.state.ions),
+            [&](auto& view) { onIons(std::get<0>(view.args), view.layout); });
+    }
+
     void fillPopMomTensor(auto& lvl, auto const time, auto const popidx)
     {
         using value_type = TensorFieldT::value_type;
