@@ -3,14 +3,13 @@
 An MPI process can run on several threads (PHARE_THREADS): its patches concurrently, and the
 particles of a patch in pieces when it has many.
 
-A patch with few particles is computed the same way whichever thread runs it, so the same run
-on 1 and on 4 threads must write identical files: fields, moments and particles, on both levels,
-bit for bit.
+With several threads the particles of a patch are deposited as they are pushed, in pieces that
+do not depend on the number of threads: 2 and 4 threads must write identical files, fields,
+moments and particles, on both levels, bit for bit. This is checked with patches of few
+particles (one piece, many patches per thread) and of many particles (several pieces).
 
-A patch with many particles has its deposit cut in pieces as soon as there are several threads.
-The pieces do not depend on the number of threads, so 2 and 4 threads must write identical files.
-One thread deposits in one piece: nodes sum the same particles in another order, and the files
-agree with the threaded ones to rounding.
+One thread pushes, selects, then deposits: nodes sum the same particles in another order, and
+the files agree with the threaded ones to rounding.
 """
 
 import os
@@ -154,14 +153,16 @@ class ThreadsTest(SimulatorTest):
                 close = np.allclose(a[key], b[key], rtol=0, atol=rtol * scale, equal_nan=True)
                 self.assertTrue(close, f"{name}:{key} differs by more than rounding")
 
-    def test_small_patches_same_files_on_one_and_four_threads(self):
-        # 2000 particles per patch: no pieces, many patches per thread
+    def test_small_patches_same_files_on_two_and_four_threads(self):
+        # 2000 particles per patch: one piece, many patches per thread
         case = dict(largest_patch_size=10, ppc=20)
         one = self.run_with(1, "small", **case)
+        two = self.run_with(2, "small", **case)
         four = self.run_with(4, "small", **case)
 
         if cpp.mpi_rank() == 0:
-            self.assert_same_files(one, four)
+            self.assert_same_files(two, four)
+            self.assert_close_files(one, four, rtol=1e-12)
 
     def test_large_patches_same_files_on_two_and_four_threads(self):
         # 40000 particles per patch and more: push and deposit in pieces

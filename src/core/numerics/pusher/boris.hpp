@@ -45,6 +45,9 @@ public:
 
 private:
     using ParticleSelector = Super::ParticleSelector;
+    using Particle_t       = Super::Particle_t;
+    using ParticleArray_t  = ParticleRange::array_t;
+    using PushedBlock      = Super::PushedBlock;
 
 public:
     // This move function should be considered when being used so that all particles are pushed
@@ -139,6 +142,26 @@ public:
 
 
 
+    /** see Pusher::moveInPieces() documentation */
+    void moveInPieces(ParticleRange& range, Electromag const& emFields, double charge, double mass,
+                      Interpolator& interpolator, GridLayout const& layout, std::size_t nPieces,
+                      PushedBlock const& pushed) override
+    {
+        blocksOfPieces_(range, &range.array(), emFields, charge * 0.5 * dt_ / mass, interpolator,
+                        layout, nPieces, pushed);
+    }
+
+    /** see Pusher::pushCopiesInPieces() documentation */
+    void pushCopiesInPieces(ParticleRange const& range, Electromag const& emFields, double charge,
+                            double mass, Interpolator& interpolator, GridLayout const& layout,
+                            std::size_t nPieces, PushedBlock const& pushed) override
+    {
+        blocksOfPieces_(range, nullptr, emFields, charge * 0.5 * dt_ / mass, interpolator, layout,
+                        nPieces, pushed);
+    }
+
+
+
     /** see Pusher::move() documentation*/
     void setMeshAndTimeStep(std::array<double, dim> ms, double const ts) override
     {
@@ -153,7 +176,7 @@ private:
     /** move the particle partIn of half a time step and store it in partOut
      */
     template<typename Particle>
-    auto advancePosition_(Particle const& partIn, Particle& partOut)
+    PHARE_ALWAYS_INLINE auto advancePosition_(Particle const& partIn, Particle& partOut)
     {
         std::array<int, dim> newCell;
         for (std::size_t iDim = 0; iDim < dim; ++iDim)
@@ -210,7 +233,6 @@ private:
         auto const firstOut = rangeOut.ibegin();
         auto const n        = rangeIn.size();
         auto const nPieces  = std::max<std::size_t>(n / particlesPerPiece_, 1);
-        bool const copies   = &inParticles != &outParticles;
 
         std::vector<CellChanges> prePush(nPieces), postPush(nPieces);
 
@@ -218,32 +240,112 @@ private:
             auto const piece       = chunk(n, nPieces, p);
             auto pieceInterpolator = interpolator; // its work arrays are per piece
 
-            auto const noteIn = [&](auto& changes) {
-                return [&](auto const& newCell, std::size_t const idx) {
-                    changes.push_back({idx, outParticles[idx].iCell, newCell});
-                    outParticles[idx].iCell = newCell;
-                };
-            };
-            auto const notePrePush  = noteIn(prePush[p].changes);
-            auto const notePostPush = noteIn(postPush[p].changes);
-
-            for (auto i = piece.first; i < piece.last; ++i)
-            {
-                if (copies)
-                    outParticles[firstOut + i] = inParticles[firstIn + i];
-                prePushStep_(inParticles[firstIn + i], outParticles[firstOut + i], firstOut + i,
-                             notePrePush);
-            }
-
-            for (auto i = piece.first; i < piece.last; ++i)
-                accelerateAndPostPushStep_(outParticles[firstOut + i], firstOut + i, emFields,
-                                           coef1, pieceInterpolator, layout, notePostPush);
+            if (piece.first < piece.last)
+                pushBlock_(&inParticles[firstIn + piece.first],
+                           &outParticles[firstOut + piece.first], piece.last - piece.first,
+                           firstOut + piece.first, emFields, coef1, pieceInterpolator, layout,
+                           noteIn_(prePush[p], outParticles), noteIn_(postPush[p], outParticles));
         });
 
+        replay_(prePush, postPush, outParticles);
+    }
+
+
+    /** moveInPieces and pushCopiesInPieces: the pushed particles are those of the range when
+     * kept is their array, copies that are not kept when it is null.
+     *
+     * Particles pushed in their array change the cell map as in moveInPieces_.
+     */
+    void blocksOfPieces_(ParticleRange const& range, ParticleArray_t* const kept,
+                         Electromag const& emFields, double const coef1, Interpolator& interpolator,
+                         GridLayout const& layout, std::size_t const nPieces,
+                         PushedBlock const& pushed)
+    {
+        auto const& particles = range.array();
+        auto const first      = range.ibegin();
+        auto const n          = range.size();
+
+        std::vector<CellChanges> prePush(kept ? nPieces : 0), postPush(kept ? nPieces : 0);
+
+        parallel_for(nPieces, [&](std::size_t const p) {
+            auto const piece       = chunk(n, nPieces, p);
+            auto pieceInterpolator = interpolator; // its work arrays are per piece
+
+            for (auto b = piece.first; b < piece.last; b += particlesPerPiece_)
+            {
+                auto const count     = std::min(particlesPerPiece_, piece.last - b);
+                auto const* const in = &particles[first + b];
+
+                if (kept)
+                {
+                    auto* const block = &(*kept)[first + b];
+                    pushBlock_(in, block, count, first + b, emFields, coef1, pieceInterpolator,
+                               layout, noteIn_(prePush[p], *kept), noteIn_(postPush[p], *kept));
+                    pushed(p, {block, count});
+                }
+                else
+                {
+                    // one block of copies per thread: a block is done with before the thread
+                    // starts another
+                    static thread_local std::vector<Particle_t> copies(particlesPerPiece_);
+
+                    auto const setCell = [&](auto const& newCell, std::size_t const idx) {
+                        copies[idx].iCell = newCell;
+                    };
+                    pushBlock_(in, copies.data(), count, 0, emFields, coef1, pieceInterpolator,
+                               layout, setCell, setCell);
+                    pushed(p, {copies.data(), count});
+                }
+            }
+        });
+
+        if (kept)
+            replay_(prePush, postPush, *kept);
+    }
+
+
+    /** Pushes count particles from in to out (the same, or copies): their first position update,
+     * then their velocity and second position update. out[i] is at index firstIdx + i for the
+     * two changeCell(newCell, index), called for the particles that change cell in the first and
+     * in the second position update.
+     */
+    PHARE_ALWAYS_INLINE void pushBlock_(Particle_t const* const in, Particle_t* const out,
+                                        std::size_t const count, std::size_t const firstIdx,
+                                        Electromag const& emFields, double const coef1,
+                                        Interpolator& interpolator, GridLayout const& layout,
+                                        auto const& changeCellPrePush,
+                                        auto const& changeCellPostPush)
+    {
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            if (in != out)
+                out[i] = in[i];
+            prePushStep_(in[i], out[i], firstIdx + i, changeCellPrePush);
+        }
+
+        for (std::size_t i = 0; i < count; ++i)
+            accelerateAndPostPushStep_(out[i], firstIdx + i, emFields, coef1, interpolator, layout,
+                                       changeCellPostPush);
+    }
+
+    // notes in changes the particles of the array that change cell, for replay_
+    static auto noteIn_(CellChanges& changes, ParticleArray_t& particles)
+    {
+        return [&](auto const& newCell, std::size_t const idx) {
+            changes.changes.push_back({idx, particles[idx].iCell, newCell});
+            particles[idx].iCell = newCell;
+        };
+    }
+
+    // the cell map of the array learns the changes of cell noted by the pieces, in the order one
+    // thread pushing the whole range in two loops would have made them
+    static void replay_(std::vector<CellChanges> const& prePush,
+                        std::vector<CellChanges> const& postPush, ParticleArray_t& particles)
+    {
         for (auto const* const pass : {&prePush, &postPush})
             for (auto const& piece : *pass)
                 for (auto const& [idx, oldCell, newCell] : piece.changes)
-                    outParticles.cell_changed(oldCell, newCell, idx);
+                    particles.cell_changed(oldCell, newCell, idx);
     }
 
 
@@ -323,7 +425,8 @@ private:
     /** Accelerate the particles in rangeIn and put the new velocity in rangeOut
      */
     template<typename Particle_t, typename ParticleEB>
-    void accelerate_(Particle_t& part, ParticleEB const& particleEB, double const coef1)
+    PHARE_ALWAYS_INLINE void accelerate_(Particle_t& part, ParticleEB const& particleEB,
+                                         double const coef1)
     {
         auto& [pE, pB]        = particleEB;
         auto& [pEx, pEy, pEz] = pE;

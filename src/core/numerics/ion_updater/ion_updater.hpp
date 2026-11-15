@@ -15,7 +15,9 @@
 #include "initializer/data_provider.hpp"
 
 
+#include <span>
 #include <memory>
+#include <ranges>
 #include <stdexcept>
 #include <vector>
 #include <cstddef>
@@ -38,6 +40,7 @@ public:
     using Box               = PHARE::core::Box<int, dimension>;
     using Interpolator      = PHARE::core::Interpolator<dimension, interp_order>;
     using VecField          = Ions::vecfield_type;
+    using Field             = Ions::field_type;
     using ParticleArray     = Ions::particle_array_type;
     using Particle_t        = ParticleArray::Particle_t;
     using PartIterator      = ParticleArray::iterator;
@@ -82,13 +85,36 @@ private:
     template<typename Boxing_t>
     void updateAndDepositAll_(Ions& ions, Electromag const& em, Boxing_t const& boxing);
 
+    template<typename Population, typename Boxing_t>
+    void pushCopyAndDepositDomain_(Population& pop, Electromag const& em, Boxing_t const& boxing);
+
 
     // adds the particles of range to the particle density and flux of their population
     template<typename Population>
     void deposit_(ParticleRange range, Population& pop, GridLayout const& layout);
 
+    // pushes the domain particles of the population and adds to its density and flux those that
+    // end in a cell deposited(cell) accepts
+    template<typename Population>
+    void moveAndDeposit_(Population& pop, Electromag const& em, GridLayout const& layout,
+                         bool keepPushed, auto const& deposited);
+
+    // density and flux a deposit piece writes on, see depositTargets_
+    struct DepositTarget
+    {
+        Field density;
+        VecField flux;
+        double* copy; // what both are views on, null for the fields of the population
+    };
+
+    template<typename Population>
+    std::vector<DepositTarget> depositTargets_(Population& pop, std::size_t nPieces);
+
+    template<typename Population>
+    void addDepositCopies_(Population& pop, std::size_t nPieces);
+
     // pieces a deposit of nParticles is cut in, 1 with one thread. It must not depend on the
-    // number of threads, see deposit_
+    // number of threads, see depositTargets_
     static std::size_t depositPieces_(std::size_t const nParticles, std::size_t const nNodes)
     {
         if (nbrThreads() == 1)
@@ -142,69 +168,62 @@ void IonUpdater<Ions, Electromag, GridLayout>::updateIons(Ions& ions)
 }
 
 /**
- * A long range is cut in consecutive pieces deposited by the threads of the process, see
- * core::parallel_for. Two pieces may write the same nodes, so only the first one deposits on the
- * fields: each of the others deposits on its own zeroed copy, and the copies are added to the
- * fields afterwards, in the order of the pieces.
- * A node then sums its particles piece by piece instead of one by one: the result differs from
- * the one-piece deposit by rounding. The pieces depend on the size of the range and of the
- * fields only, so the result is the same whatever the number of threads above one.
+ * What the pieces of a deposit write on: the density and flux of the population for the first
+ * one, zeroed copies of them for the others, since two pieces may write the same nodes.
+ * addDepositCopies_ then adds the copies to the fields, in the order of the pieces.
+ *
+ * A node sums its particles piece by piece instead of one by one: the result differs from the
+ * one-piece deposit by rounding. The pieces depend on the number of particles and of nodes
+ * only, see depositPieces_, so the result is the same whatever the number of threads above one.
  */
 template<typename Ions, typename Electromag, typename GridLayout>
 template<typename Population>
-void IonUpdater<Ions, Electromag, GridLayout>::deposit_(ParticleRange range, Population& pop,
-                                                        GridLayout const& layout)
+auto IonUpdater<Ions, Electromag, GridLayout>::depositTargets_(Population& pop,
+                                                               std::size_t const nPieces)
+    -> std::vector<DepositTarget>
 {
     auto& density = pop.particleDensity();
     auto& flux    = pop.flux();
 
-    auto const nNodes  = density.size();
-    auto const n       = range.size();
-    auto const nPieces = depositPieces_(n, nNodes);
-
-    if (nPieces == 1)
-    {
-        interpolator_(range, density, flux, layout);
-        return;
-    }
-
-    using Field_t           = std::remove_cvref_t<decltype(density)>;
-    auto constexpr nFields  = std::size_t{4}; // density and flux
-    auto const copySize     = nFields * nNodes;
+    auto constexpr nFields = std::size_t{4}; // density and flux
+    auto const nNodes      = density.size();
+    auto const copySize    = nFields * nNodes;
     depositBuffer_.resize((nPieces - 1) * copySize);
-    auto* const copies = depositBuffer_.data();
 
-    parallel_for(nPieces, [&](std::size_t const p) {
-        auto const piece = chunk(n, nPieces, p);
-        auto pieceRange  = makeRange(range.array(), range.ibegin() + piece.first,
-                                     range.ibegin() + piece.last);
-        Interpolator pieceInterpolator; // its work arrays are per piece
+    std::vector<DepositTarget> targets;
+    targets.reserve(nPieces);
+    targets.push_back({density, flux, nullptr});
 
-        if (p == 0)
-        {
-            pieceInterpolator(pieceRange, density, flux, layout);
-            return;
-        }
-
-        auto* const copy = copies + (p - 1) * copySize;
-        std::fill_n(copy, copySize, 0.);
-
-        Field_t densityCopy{density.name(), density.physicalQuantity(), copy, density.shape()};
-        auto fluxCopy = flux;
+    for (std::size_t p = 1; p < nPieces; ++p)
+    {
+        auto* const copy = depositBuffer_.data() + (p - 1) * copySize;
+        targets.push_back(
+            {Field{density.name(), density.physicalQuantity(), copy, density.shape()}, flux, copy});
         for (std::size_t i = 0; i < 3; ++i)
-            fluxCopy[i] = Field_t{flux[i].name(), flux[i].physicalQuantity(),
-                                  copy + (i + 1) * nNodes, flux[i].shape()};
+            targets.back().flux[i] = Field{flux[i].name(), flux[i].physicalQuantity(),
+                                           copy + (i + 1) * nNodes, flux[i].shape()};
+    }
+    return targets;
+}
 
-        pieceInterpolator(pieceRange, densityCopy, fluxCopy, layout);
-    });
+
+template<typename Ions, typename Electromag, typename GridLayout>
+template<typename Population>
+void IonUpdater<Ions, Electromag, GridLayout>::addDepositCopies_(Population& pop,
+                                                                 std::size_t const nPieces)
+{
+    auto& density       = pop.particleDensity();
+    auto& flux          = pop.flux();
+    auto const nNodes   = density.size();
+    auto const copySize = 4 * nNodes;
 
     // nodes are independent of each other: pieces of them can be summed concurrently
-    auto const nNodePieces = nbrChunks(nNodes, 4096);
+    auto const nNodePieces = nPieces > 1 ? nbrChunks(nNodes, 4096) : 0;
     parallel_for(nNodePieces, [&](std::size_t const np) {
         auto const nodes = chunk(nNodes, nNodePieces, np);
         for (std::size_t p = 1; p < nPieces; ++p)
         {
-            auto const* const copy = copies + (p - 1) * copySize;
+            auto const* const copy = depositBuffer_.data() + (p - 1) * copySize;
             auto const add         = [&](auto& field, double const* const from) {
                 auto* const to = field.data();
                 for (auto i = nodes.first; i < nodes.last; ++i)
@@ -215,6 +234,98 @@ void IonUpdater<Ions, Electromag, GridLayout>::deposit_(ParticleRange range, Pop
                 add(flux[i], copy + (i + 1) * nNodes);
         }
     });
+}
+
+
+/**
+ * A long range is cut in consecutive pieces deposited by the threads of the process, see
+ * core::parallel_for and depositTargets_.
+ */
+template<typename Ions, typename Electromag, typename GridLayout>
+template<typename Population>
+void IonUpdater<Ions, Electromag, GridLayout>::deposit_(ParticleRange range, Population& pop,
+                                                        GridLayout const& layout)
+{
+    auto const n       = range.size();
+    auto const nPieces = depositPieces_(n, pop.particleDensity().size());
+
+    if (nPieces == 1)
+    {
+        interpolator_(range, pop.particleDensity(), pop.flux(), layout);
+        return;
+    }
+
+    auto targets = depositTargets_(pop, nPieces);
+
+    parallel_for(nPieces, [&](std::size_t const p) {
+        auto const piece = chunk(n, nPieces, p);
+        auto pieceRange
+            = makeRange(range.array(), range.ibegin() + piece.first, range.ibegin() + piece.last);
+        Interpolator pieceInterpolator; // its work arrays are per piece
+
+        auto& [density, flux, copy] = targets[p];
+        if (copy)
+            std::fill_n(copy, 4 * density.size(), 0.);
+        pieceInterpolator(pieceRange, density, flux, layout);
+    });
+
+    addDepositCopies_(pop, nPieces);
+}
+
+
+/**
+ * The push and the deposit of the domain particles in one pass over them: the pusher hands
+ * each block of particles it has pushed to the deposit while the block is still in the cache
+ * of the core, instead of the deposit reading all the particles again from memory.
+ *
+ * Without keepPushed the pushed particles are not stored at all: the predictor only needs
+ * them for the deposit, and the particles of the population stay as they are.
+ *
+ * The pieces are those of deposit_, each writing on its own target: see depositTargets_.
+ */
+template<typename Ions, typename Electromag, typename GridLayout>
+template<typename Population>
+void IonUpdater<Ions, Electromag, GridLayout>::moveAndDeposit_(Population& pop,
+                                                               Electromag const& em,
+                                                               GridLayout const& layout,
+                                                               bool const keepPushed,
+                                                               auto const& deposited)
+{
+    auto range         = makeIndexRange(pop.domainParticles());
+    auto const nPieces = depositPieces_(range.size(), pop.particleDensity().size());
+    auto targets       = depositTargets_(pop, nPieces);
+
+    // a piece zeroes its copy when it starts: its blocks come one after the other
+    std::vector<char> started(nPieces, 0);
+
+    auto const deposit = [&](std::size_t const p, std::span<Particle_t const> const block) {
+        auto& [density, flux, copy] = targets[p];
+        if (copy and !started[p])
+        {
+            std::fill_n(copy, 4 * density.size(), 0.);
+            started[p] = 1;
+        }
+
+        Interpolator blockInterpolator; // its work arrays are per block
+        blockInterpolator(
+            std::views::filter(block,
+                               [&](auto const& particle) { return deposited(particle.iCell); }),
+            density, flux, layout);
+    };
+
+    if (keepPushed)
+        pusher_->moveInPieces(range, em, pop.charge(), pop.mass(), interpolator_, layout, nPieces,
+                              deposit);
+    else
+        pusher_->pushCopiesInPieces(range, em, pop.charge(), pop.mass(), interpolator_, layout,
+                                    nPieces, deposit);
+
+    // a piece without particles never started
+    for (std::size_t p = 1; p < nPieces; ++p)
+        if (!started[p])
+            std::fill_n(targets[p].copy, 4 * targets[p].density.size(), 0.);
+
+    addDepositCopies_(pop, nPieces);
 }
 
 
@@ -243,6 +354,12 @@ struct UpdaterSelectionBoxing
 
     // a particle belongs to this patch if and only if its cell is in the domain and owned
     bool isOwned(auto const& cell) const { return isOwned(cell, domainBox, nonOwnedBoxes); }
+
+    // what inNonLevelGhostBox selects, for one cell: the domain is part of these boxes
+    bool isInNonLevelGhostBox(auto const& cell) const
+    {
+        return isIn(cell, domainBox) or isIn(Point{cell}, nonLevelGhostBox);
+    }
 
     // no selection: tells the pusher that it keeps every particle between its two position
     // updates, see Pusher::move
@@ -282,6 +399,34 @@ struct UpdaterSelectionBoxing
 };
 
 /**
+ * The predictor's push and deposit of the domain particles with one thread: a copy of the
+ * particles is pushed, selected and deposited, as three passes over them.
+ */
+template<typename Ions, typename Electromag, typename GridLayout>
+template<typename Population, typename Boxing_t>
+void IonUpdater<Ions, Electromag, GridLayout>::pushCopyAndDepositDomain_(Population& pop,
+                                                                         Electromag const& em,
+                                                                         Boxing_t const& boxing)
+{
+    auto const& layout = boxing.layout;
+
+    // work on a local copy, made by the pusher as it reads the domain particles.
+    // Its cell map starts empty instead of as a copy: the pusher registers in it the
+    // particles that change cell, and those are all the selection after the push looks
+    // for, since no domain particle starts in a cell that inNonLevelGhostBox rejects.
+    tmp_particles_.resize_like(pop.domainParticles());
+
+    auto const inRange = makeIndexRange(pop.domainParticles());
+    auto outRange      = makeIndexRange(tmp_particles_);
+    auto allowed       = outRange
+        = pusher_->move(inRange, outRange, em, pop.charge(), pop.mass(), interpolator_, layout,
+                        boxing.allParticles, boxing.inNonLevelGhostBox);
+
+    deposit_(allowed, pop, layout);
+}
+
+
+/**
  * @brief IonUpdater<Ions, Electromag, GridLayout>::updateAndDepositDomain_
    evolves moments from time n to n+1 without updating particles, which stay at time n
  */
@@ -297,12 +442,7 @@ void IonUpdater<Ions, Electromag, GridLayout>::updateAndDepositDomain_(Ions& ion
 
     for (auto& pop : ions)
     {
-        // work on a local copy, made by the pusher as it reads the domain particles.
-        // Its cell map starts empty instead of as a copy: the pusher registers in it the
-        // particles that change cell, and those are all the selection after the push looks
-        // for, since no domain particle starts in a cell that inNonLevelGhostBox rejects.
-        tmp_particles_.resize_like(pop.domainParticles());
-
+        // both ways below rely on it
         PHARE_DEBUG_DO({
             for (auto const& particle : pop.domainParticles())
                 if (!isIn(Point{particle.iCell}, boxing.nonLevelGhostBox))
@@ -310,16 +450,13 @@ void IonUpdater<Ions, Electromag, GridLayout>::updateAndDepositDomain_(Ions& ion
                         "IonUpdater: a domain particle is outside the non level ghost box");
         })
 
-        // first push all domain particles twice
-        // accumulate those inNonLevelGhostBox
-        auto const inRange = makeIndexRange(pop.domainParticles());
-        auto outRange      = makeIndexRange(tmp_particles_);
-        auto allowed       = outRange
-            = pusher_->move(inRange, outRange, em, pop.charge(), pop.mass(), interpolator_, layout,
-                            boxing.allParticles, boxing.inNonLevelGhostBox);
-
-        deposit_(allowed, pop, layout);
-
+        // push all domain particles, accumulate those inNonLevelGhostBox
+        if (nbrThreads() > 1)
+            // the pushed domain particles are only needed by the deposit
+            moveAndDeposit_(pop, em, layout, /*keepPushed=*/false,
+                            [&](auto const& cell) { return boxing.isInNonLevelGhostBox(cell); });
+        else
+            pushCopyAndDepositDomain_(pop, em, boxing);
 
         // push those in the ghostArea (i.e. stop pushing if they're not out of it)
         // deposit moments on those which leave to go inOwnedDomain
@@ -374,15 +511,26 @@ void IonUpdater<Ions, Electromag, GridLayout>::updateAndDepositAll_(Ions& ions,
         auto& domainParticles = pop.domainParticles();
         auto domainPartRange  = makeIndexRange(domainParticles);
 
+        // with threads the domain particles are deposited as they are pushed, those that end
+        // where the deposits below would find them: in the domain or among the new patch ghosts
+        bool const depositedInPush = nbrThreads() > 1;
+        auto& patchGhost           = pop.patchGhostParticles();
+        auto const oldPatchGhosts  = patchGhost.size();
+
+        if (depositedInPush)
+            moveAndDeposit_(pop, em, layout, /*keepPushed=*/true,
+                            [&](auto const& cell) { return boxing.isInNonLevelGhostBox(cell); });
+
         auto inDomain
-            = pusher_->move(domainPartRange, domainPartRange, em, pop.charge(), pop.mass(),
-                            interpolator_, layout, boxing.allParticles, boxing.inOwnedDomain);
+            = depositedInPush
+                  ? boxing.inOwnedDomain(domainPartRange)
+                  : pusher_->move(domainPartRange, domainPartRange, em, pop.charge(), pop.mass(),
+                                  interpolator_, layout, boxing.allParticles, boxing.inOwnedDomain);
 
         auto now_ghosts = makeRange(domainParticles, inDomain.iend(), domainParticles.size());
         auto const not_level_ghosts = boxing.inNonLevelGhostBox(now_ghosts);
 
         // copy out new patch ghosts
-        auto& patchGhost = pop.patchGhostParticles();
         patchGhost.reserve(patchGhost.size() + not_level_ghosts.size());
         std::copy(not_level_ghosts.begin(), not_level_ghosts.end(), std::back_inserter(patchGhost));
 
@@ -403,6 +551,7 @@ void IonUpdater<Ions, Electromag, GridLayout>::updateAndDepositAll_(Ions& ions,
         })
 
         domainParticles.erase(now_ghosts); // drop all ghosts
+        auto const pushedInDomain = domainParticles.size();
 
         if (pop.levelGhostParticles().size())
         {
@@ -419,8 +568,18 @@ void IonUpdater<Ions, Electromag, GridLayout>::updateAndDepositAll_(Ions& ions,
                 makeRange(particleArray, inGhostLayerRange.iend(), particleArray.size()));
         }
 
-        deposit_(makeIndexRange(domainParticles), pop, layout);
-        deposit_(makeIndexRange(patchGhost), pop, layout);
+        if (depositedInPush)
+        {
+            // what the push has not seen: level ghosts that entered, older patch ghosts
+            deposit_(makeRange(domainParticles, pushedInDomain, domainParticles.size()), pop,
+                     layout);
+            deposit_(makeRange(patchGhost, 0, oldPatchGhosts), pop, layout);
+        }
+        else
+        {
+            deposit_(makeIndexRange(domainParticles), pop, layout);
+            deposit_(makeIndexRange(patchGhost), pop, layout);
+        }
     }
 }
 

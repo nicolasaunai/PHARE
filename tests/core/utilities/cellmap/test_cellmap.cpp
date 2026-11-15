@@ -54,6 +54,30 @@ TEST(CellMap, sizeIsNbrOfElements)
     EXPECT_EQ(cm.size({26, 14}), 0);
 }
 
+TEST(CellMap, resetGivesAnEmptyMapOverTheNewBox)
+{
+    Box<int, 2> const first{{10, 12}, {30, 32}};
+    CellMap<2, int> cm{first};
+    cm.addToCell(Point{14, 27}, 0);
+    cm.addToCell(Point{30, 32}, 1);
+
+    Box<int, 2> const sameShape{{110, 212}, {130, 232}};
+    cm.reset(sameShape);
+    EXPECT_EQ(cm.box(), sameShape);
+    EXPECT_EQ(cm.size(), 0);
+    cm.addToCell(Point{130, 232}, 4);
+    EXPECT_EQ(cm.size({130, 232}), 1);
+    EXPECT_EQ(cm.size(), 1);
+
+    Box<int, 2> const otherShape{{0, 0}, {4, 60}};
+    cm.reset(otherShape);
+    EXPECT_EQ(cm.box(), otherShape);
+    EXPECT_EQ(cm.nbr_cells(), otherShape.size());
+    EXPECT_EQ(cm.size(), 0);
+    cm.addToCell(Point{4, 60}, 7);
+    EXPECT_EQ(cm.size({4, 60}), 1);
+}
+
 TEST(CellMap, canSortCells)
 {
     auto constexpr dim = 2u;

@@ -125,6 +125,19 @@ public:
             cell.clear();
     }
 
+    // an empty map over box: the lists of the cells keep their memory when the box has the shape
+    // of the previous one, as the patches of a level mostly do
+    void reset(box_t const& box)
+    {
+        if (box.shape() == box_.shape())
+        {
+            clear();
+            box_ = box;
+        }
+        else
+            *this = CellMap{box};
+    }
+
     void empty();
 
     NO_DISCARD bool is_empty() const { return size() == 0; }

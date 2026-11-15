@@ -65,13 +65,8 @@ public:
     // themselves are not copied: for a caller that writes all of them, as the pusher does
     void resize_like(ParticleArray const& from)
     {
-        if (box_ == from.box_)
-            cellMap_.clear();
-        else
-        {
-            box_     = from.box_;
-            cellMap_ = CellMap_t{box_};
-        }
+        box_ = from.box_;
+        cellMap_.reset(box_);
         particles_.resize(from.size());
     }
 

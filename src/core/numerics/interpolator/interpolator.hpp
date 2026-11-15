@@ -700,8 +700,11 @@ protected:
     Weights primal_weights_;
 
 private:
+    // called six times per particle and push: left out of line by some compilers when the push
+    // loop exists in several copies
     template<auto quantity, typename GridLayout>
-    NO_DISCARD auto meshToParticle(auto const& field, GridLayout const&, auto const& indexWeights)
+    NO_DISCARD PHARE_ALWAYS_INLINE auto meshToParticle(auto const& field, GridLayout const&,
+                                                       auto const& indexWeights)
     {
         return meshToParticle_.template operator()<GridLayout, quantity>(field, indexWeights);
     }
