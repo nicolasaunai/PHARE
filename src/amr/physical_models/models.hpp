@@ -1,10 +1,13 @@
 #ifndef PHARE_AMR_PHYSICAL_MODEL_MODELS_HPP
 #define PHARE_AMR_PHYSICAL_MODEL_MODELS_HPP
 
+#include "core/utilities/parallel.hpp"
+
 #include "amr/resources_manager/amr_utils.hpp"
 
 #include <tuple>
 #include <string>
+#include <vector>
 #include <cstddef>
 #include <utility>
 #include <type_traits>
@@ -40,6 +43,37 @@ struct LevelAccessor
                 }
             },
             args);
+    }
+
+    // fn(view) per patch, patches running concurrently on the threads of core::parallel_for.
+    // The model has one set of resource views, which can only point at one patch at a time, so
+    // each thread sets its own copy of them: fn must reach the resources through view.args only,
+    // and must only write the data of its own patch. Same as exec when one thread is used.
+    void concurrentExec(auto&& fn)
+    {
+        auto const nthreads = core::nbrThreadsFor(size());
+        if (nthreads == 1)
+            return exec(fn);
+
+        // copied and destroyed on this thread: a view may hold python callables (user functions
+        // of the initializers), which only the thread holding the interpreter lock may copy
+        std::vector<std::tuple<Args...>> copies(nthreads, std::tuple<Args...>{args});
+
+        std::vector<std::shared_ptr<patch_t>> patches;
+        patches.reserve(size());
+        for (auto const& patch : level_)
+            patches.push_back(patch);
+
+        core::parallel_for(patches.size(), [&](std::size_t const i) {
+            std::apply(
+                [&](auto&... resources) {
+                    auto const& patch  = *patches[i];
+                    auto const onPatch = rm_.setOnPatch(patch, resources...);
+                    PatchView view{rm_, patch, std::tuple<Args&...>{resources...}};
+                    fn(view);
+                },
+                copies[core::threadIndex()]);
+        });
     }
 
 private:
@@ -122,6 +156,14 @@ template<typename Accessor>
 void onLevel(Accessor&& accessor, auto&& fn)
 {
     accessor.exec(fn);
+}
+
+// as onLevel with the patches running concurrently, see LevelAccessor::concurrentExec for what
+// fn may do
+template<typename Accessor>
+void concurrentOnLevel(Accessor&& accessor, auto&& fn)
+{
+    accessor.concurrentExec(fn);
 }
 
 // sum of fn(view) over the patches of the level on this rank

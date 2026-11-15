@@ -7,6 +7,7 @@
 #include "core/errors.hpp"
 #include "core/logger.hpp"
 #include "core/utilities/types.hpp"
+#include "core/utilities/parallel.hpp"
 #include "core/data/field/field_scratch.hpp"
 #include "mpi/mpi_utils.hpp"
 #include "core/utilities/timestamps.hpp"
@@ -384,6 +385,8 @@ void Simulator<opts>::setup(PHARE::initializer::PHAREDict const& dict)
 
     log_out = log_file();
     coutbuf = logging(log_out);
+
+    core::setNbrThreadsFromEnv();
 
     if (!hierarchy_)
         throw std::runtime_error("NO HIERARCHY!");

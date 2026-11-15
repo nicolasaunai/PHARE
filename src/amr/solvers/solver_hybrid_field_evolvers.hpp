@@ -28,12 +28,12 @@ public:
 
     void operator()(auto& B, auto& J, auto& E, auto& electrons)
     {
-        amr::onLevel(amr::make_model_level_accessor(level_, model_, electrons, B, J, E),
-                     [&](auto& view) {
-                         auto& [electrons_v, B_v, J_v, E_v] = view.args;
-                         (*this)(view.layout, electrons_v.density(), electrons_v.velocity(),
-                                 electrons_v.pressure(), B_v, J_v, E_v);
-                     });
+        amr::concurrentOnLevel(
+            amr::make_model_level_accessor(level_, model_, electrons, B, J, E), [&](auto& view) {
+                auto& [electrons_v, B_v, J_v, E_v] = view.args;
+                (*this)(view.layout, electrons_v.density(), electrons_v.velocity(),
+                        electrons_v.pressure(), B_v, J_v, E_v);
+            });
     }
 
     void operator()(auto& B, auto& E, auto& electrons) { (*this)(B, model_.state.J, E, electrons); }

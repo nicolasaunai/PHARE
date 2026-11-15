@@ -5,6 +5,7 @@
 #include "core/models/quantities/hybrid_quantities.hpp"
 #include "core/numerics/ohm/ohm.hpp"
 #include "core/utilities/algorithm.hpp"
+#include "core/utilities/parallel.hpp"
 #include "mpi/mpi_utils.hpp"
 #include "core/data/vecfield/vecfield.hpp"
 #include "core/numerics/ion_updater/ion_updater.hpp"
@@ -25,6 +26,7 @@
 #include <memory>
 #include <stdexcept>
 #include <tuple>
+#include <vector>
 #include <unordered_map>
 #include <cmath>
 
@@ -64,7 +66,10 @@ private:
     std::unordered_map<std::size_t, double> oldTime_;
 
     core::OhmInfo ohm_info;
-    IonUpdater_t ionUpdater_;
+    // the updater keeps a particle buffer and the interpolator's weights between calls, so
+    // each thread pushing a patch needs its own
+    initializer::PHAREDict ionUpdaterDict_;
+    std::vector<IonUpdater_t> ionUpdaterPerThread_;
 
 
 public:
@@ -77,7 +82,7 @@ public:
     explicit SolverPPC(PHARE::initializer::PHAREDict const& dict)
         : ISolver<AMR_Types>{"PPC"}
         , ohm_info{core::OhmInfo::FROM(dict["ohm"])}
-        , ionUpdater_{dict["ion_updater"]}
+        , ionUpdaterDict_{dict["ion_updater"]}
 
     {
     }
@@ -116,7 +121,8 @@ public:
     void onRegrid() override
     {
         boxing.clear();
-        ionUpdater_.reset();
+        for (auto& updater : ionUpdaterPerThread_)
+            updater.reset();
     }
 
 
@@ -183,13 +189,21 @@ private:
         return *level;
     }
 
+    // one updater per thread, grown here on the calling thread before the patches run
+    auto& ionUpdaters_()
+    {
+        while (ionUpdaterPerThread_.size() < core::nbrThreads())
+            ionUpdaterPerThread_.emplace_back(ionUpdaterDict_);
+        return ionUpdaterPerThread_;
+    }
+
     void update_electrons(auto& level, auto& model)
     {
-        amr::onLevel(amr::make_model_level_accessor(level, model, model.state.electrons),
-                     [&](auto& view) {
-                         auto& [electrons] = view.args;
-                         electrons.update(view.layout);
-                     });
+        amr::concurrentOnLevel(amr::make_model_level_accessor(level, model, model.state.electrons),
+                               [&](auto& view) {
+                                   auto& [electrons] = view.args;
+                                   electrons.update(view.layout);
+                               });
     }
 
 
@@ -264,7 +278,7 @@ void SolverPPC<HybridModel, AMR_Types>::prepareStep(IPhysicalModel_t& model, lev
 
     auto& hybridModel = dynamic_cast<HybridModel&>(model);
 
-    amr::onLevel(
+    amr::concurrentOnLevel(
         amr::make_model_level_accessor(level, hybridModel, hybridModel.state.electromag.B, Bold_),
         [&](auto& view) {
             auto& [B, Bold] = view.args;
@@ -281,11 +295,12 @@ void SolverPPC<HybridModel, AMR_Types>::accumulateFluxSum(IPhysicalModel_t& mode
     PHARE_LOG_SCOPE(1, "SolverPPC::accumulateFluxSum");
 
     auto& hybridModel = dynamic_cast<HybridModel&>(model);
-    amr::onLevel(amr::make_model_level_accessor(level, hybridModel, fluxSumE_, electromagAvg_.E),
-                 [&](auto& view) {
-                     auto& [fluxSumE, Eavg] = view.args;
-                     core::operate<core::PlusEqualsProduct>(fluxSumE, Eavg, coef);
-                 });
+    amr::concurrentOnLevel(
+        amr::make_model_level_accessor(level, hybridModel, fluxSumE_, electromagAvg_.E),
+        [&](auto& view) {
+            auto& [fluxSumE, Eavg] = view.args;
+            core::operate<core::PlusEqualsProduct>(fluxSumE, Eavg, coef);
+        });
 }
 
 
@@ -352,9 +367,9 @@ double SolverPPC<HybridModel, AMR_Types>::computeStableDt(IPhysicalModel_t& mode
                 core::MeshIndex<dimension> const index{args...};
 
                 auto const rho = n(index);
-                auto const bx = GridLayout::template project<Scalar::Bx, Scalar::rho>(Bx, index);
-                auto const by = GridLayout::template project<Scalar::By, Scalar::rho>(By, index);
-                auto const bz = GridLayout::template project<Scalar::Bz, Scalar::rho>(Bz, index);
+                auto const bx  = GridLayout::template project<Scalar::Bx, Scalar::rho>(Bx, index);
+                auto const by  = GridLayout::template project<Scalar::By, Scalar::rho>(By, index);
+                auto const bz  = GridLayout::template project<Scalar::Bz, Scalar::rho>(Bz, index);
 
                 auto const BdotB = bx * bx + by * by + bz * bz;
 
@@ -539,13 +554,13 @@ void SolverPPC<HybridModel, AMR_Types>::average_(level_t& level, HybridModel& mo
         PHARE_LOG_SCOPE(1, "SolverPPC::average_");
 
         TimeSetter setTime{level, model, newTime};
-        amr::onLevel(amr::make_model_level_accessor(level, model, model.state.electromag,
-                                                    electromagPred_, electromagAvg_),
-                     [&](auto& view) {
-                         auto& [electromag, pred, avg] = view.args;
-                         PHARE::core::average(electromag.B, pred.B, avg.B);
-                         PHARE::core::average(electromag.E, pred.E, avg.E);
-                     });
+        amr::concurrentOnLevel(amr::make_model_level_accessor(level, model, model.state.electromag,
+                                                              electromagPred_, electromagAvg_),
+                               [&](auto& view) {
+                                   auto& [electromag, pred, avg] = view.args;
+                                   PHARE::core::average(electromag.B, pred.B, avg.B);
+                                   PHARE::core::average(electromag.E, pred.E, avg.E);
+                               });
 
         setTime(electromagAvg_.B);
         setTime(electromagAvg_.E);
@@ -597,13 +612,15 @@ void SolverPPC<HybridModel, AMR_Types>::moveIons_(level_t& level, HybridModel& m
     try
     {
         PHARE_LOG_SCOPE(1, "SolverPPC::moveIons");
-        auto dt = newTime - currentTime;
-        amr::onLevel(amr::make_model_level_accessor(level, model, state.ions, electromagAvg_),
-                     [&](auto& view) {
-                         auto& [ions, electromagAvg] = view.args;
-                         ionUpdater_.updatePopulations(ions, electromagAvg,
-                                                       levelBoxing.at(view.patchID()), dt, mode);
-                     });
+        auto dt        = newTime - currentTime;
+        auto& updaters = ionUpdaters_();
+        amr::concurrentOnLevel(
+            amr::make_model_level_accessor(level, model, state.ions, electromagAvg_),
+            [&](auto& view) {
+                auto& [ions, electromagAvg] = view.args;
+                updaters[core::threadIndex()].updatePopulations(
+                    ions, electromagAvg, levelBoxing.at(view.patchID()), dt, mode);
+            });
     }
     catch (core::DictionaryException const& ex)
     {
@@ -647,16 +664,19 @@ void SolverPPC<HybridModel, AMR_Types>::moveIons_(level_t& level, HybridModel& m
 
         // the exchange hands a leaving particle to every patch whose domain contains its
         // cell; on overlapping patches only the owner keeps it
-        amr::onLevel(amr::make_model_level_accessor(level, model, state.ions), [&](auto& view) {
-            auto& [ions] = view.args;
-            ions.eraseDomainParticlesIn(levelBoxing.at(view.patchID()).nonOwnedBoxes);
-        });
+        amr::concurrentOnLevel(
+            amr::make_model_level_accessor(level, model, state.ions), [&](auto& view) {
+                auto& [ions] = view.args;
+                ions.eraseDomainParticlesIn(levelBoxing.at(view.patchID()).nonOwnedBoxes);
+            });
     }
 
-    amr::onLevel(amr::make_model_level_accessor(level, model, state.ions), [&](auto& view) {
-        auto& [ions] = view.args;
-        ionUpdater_.updateIons(ions);
-    });
+    auto& updaters = ionUpdaters_();
+    amr::concurrentOnLevel(amr::make_model_level_accessor(level, model, state.ions),
+                           [&](auto& view) {
+                               auto& [ions] = view.args;
+                               updaters[core::threadIndex()].updateIons(ions);
+                           });
 
     {
         PHARE_LOG_SCOPE(1, "SolverPPC::moveIons::fillIonBorders");

@@ -32,10 +32,11 @@ public:
 
     void operator()(auto& B, auto& E, auto& Bnew, auto& dt)
     {
-        amr::onLevel(amr::make_model_level_accessor(level_, model_, B, E, Bnew), [&](auto& view) {
-            auto& [B_v, E_v, Bnew_v] = view.args;
-            (*this)(view.layout, B_v, E_v, Bnew_v, dt);
-        });
+        amr::concurrentOnLevel(amr::make_model_level_accessor(level_, model_, B, E, Bnew),
+                               [&](auto& view) {
+                                   auto& [B_v, E_v, Bnew_v] = view.args;
+                                   (*this)(view.layout, B_v, E_v, Bnew_v, dt);
+                               });
     }
 
     level_t& level_;
@@ -66,10 +67,11 @@ public:
 
     void operator()(auto& B, auto& J)
     {
-        amr::onLevel(amr::make_model_level_accessor(level_, model_, B, J), [&](auto& view) {
-            auto& [B_v, J_v] = view.args;
-            (*this)(view.layout, B_v, J_v);
-        });
+        amr::concurrentOnLevel(amr::make_model_level_accessor(level_, model_, B, J),
+                               [&](auto& view) {
+                                   auto& [B_v, J_v] = view.args;
+                                   (*this)(view.layout, B_v, J_v);
+                               });
     }
 
     level_t& level_;
