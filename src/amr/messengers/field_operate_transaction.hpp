@@ -173,8 +173,9 @@ void FieldBorderOpTransaction<FieldData_t, Operation>::unpackStream(
                 ->getPatchData(d_refine_data[d_item_id]->d_scratch)));
     TBOX_ASSERT(onode_dst_data);
 
+    // the patch owns its data and this transaction its overlap: both outlive the schedule phase
     unpackOrDefer(onode_dst_data.get(), stream, onode_dst_data->getDataStreamSize(*d_overlap),
-                  [dst = onode_dst_data, overlap = d_overlap](auto& part) {
+                  [dst = onode_dst_data.get(), overlap = d_overlap.get()](auto& part) {
                       dst->template unpackStreamAnd<Operation>(part, *overlap);
                   });
 }
@@ -205,10 +206,11 @@ void FieldBorderOpTransaction<FieldData_t, Operation>::copyLocalData()
                 ->getPatchData(d_refine_data[d_item_id]->d_src)));
     TBOX_ASSERT(onode_src_data);
 
-    copyOrDefer(onode_dst_data.get(),
-                [dst = onode_dst_data, src = onode_src_data, overlap = d_overlap]() {
-                    dst->template operate<Operation>(*src, *overlap);
-                });
+    // the patches own their data and this transaction its overlap: all outlive the schedule phase
+    copyOrDefer(onode_dst_data.get(), [dst = onode_dst_data.get(), src = onode_src_data.get(),
+                                       overlap = d_overlap.get()]() {
+        dst->template operate<Operation>(*src, *overlap);
+    });
 }
 
 

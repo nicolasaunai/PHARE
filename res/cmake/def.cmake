@@ -33,10 +33,9 @@ endif(useExceptionsInsteadOfMPIAbort)
 set (PHARE_LINK_FLAGS )
 set (PHARE_BASE_LIBS )
 
-if(threads)
-  find_package(OpenMP REQUIRED COMPONENTS CXX)
-  set (PHARE_BASE_LIBS ${PHARE_BASE_LIBS} OpenMP::OpenMP_CXX)
-endif(threads)
+# core::parallel_for runs on std::thread, their number is set at run time by PHARE_THREADS
+find_package(Threads REQUIRED)
+set (PHARE_BASE_LIBS ${PHARE_BASE_LIBS} Threads::Threads)
 
 if(PGO_GEN)
   if(PGO_USE)

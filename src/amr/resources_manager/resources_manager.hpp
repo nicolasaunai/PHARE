@@ -19,7 +19,14 @@
 #include "SAMRAI/hier/PatchDataRestartManager.h"
 
 #include <map>
+#include <tuple>
+#include <memory>
+#include <vector>
+#include <utility>
 #include <optional>
+#include <typeindex>
+#include <functional>
+#include <string_view>
 
 
 
@@ -309,6 +316,39 @@ namespace amr
 
 
 
+        /** \brief nCopies copies of the given resource views, kept from one call to the next
+         *
+         * For callers that set views on several patches at the same time, each thread on its own
+         * copy (LevelAccessor::concurrentExec). Copying views is not free (names, lists of
+         * populations), and some hold python callables only the main thread may copy: making a
+         * copy per thread at each loop over patches costs the main thread more than the loop
+         * costs the others. Copies are therefore made once, and found again when asked for views
+         * of the same types with the same resource names: what a view is apart from the patch it
+         * points to does not change during a run.
+         *
+         * The copies are left unset, as views are outside of a loop over patches. Not for
+         * concurrent callers.
+         */
+        template<typename... ResourcesViews>
+        NO_DISCARD auto& viewCopies(std::size_t const nCopies, ResourcesViews&... views)
+        {
+            using Copies = std::vector<std::tuple<ResourcesViews...>>;
+
+            std::size_t names = 0;
+            (hashResourceNames_(views, names), ...);
+
+            auto& kept = viewCopies_[{std::type_index{typeid(Copies)}, names}];
+            if (!kept)
+                kept = std::make_shared<Copies>();
+
+            auto& copies = *std::static_pointer_cast<Copies>(kept);
+            if (copies.size() != nCopies)
+                copies = Copies(nCopies, std::tuple<ResourcesViews...>{views...});
+            return copies;
+        }
+
+
+
         /** \brief Get all the names and resources id that the resource view
          *  have registered via the ResourcesManager
          */
@@ -453,6 +493,32 @@ namespace amr
             std::tuple<Args&...> args;
         };
 
+
+
+        // hash becomes a hash of itself and of the names of the resources of obj, in order
+        template<typename ResourcesView>
+        void hashResourceNames_(ResourcesView& obj, std::size_t& hash) const
+        {
+            if constexpr (is_resource<ResourcesView>::value)
+            {
+                // boost::hash_combine
+                hash ^= std::hash<std::string_view>{}(obj.name()) + 0x9e3779b97f4a7c15ull
+                        + (hash << 6) + (hash >> 2);
+            }
+            else
+            {
+                if constexpr (has_runtime_subresourceview_list<ResourcesView>::value)
+                    for (auto& resourcesUser : obj.getRunTimeResourcesViewList())
+                        this->hashResourceNames_(resourcesUser, hash);
+
+                if constexpr (has_compiletime_subresourcesview_list<ResourcesView>::value)
+                    std::apply(
+                        [this, &hash](auto&... subResource) {
+                            (this->hashResourceNames_(subResource, hash), ...);
+                        },
+                        obj.getCompileTimeResourcesViewList());
+            }
+        }
 
 
         template<typename ResourcesView>
@@ -650,6 +716,9 @@ namespace amr
         std::shared_ptr<SAMRAI::hier::VariableContext> context_;
         SAMRAI::tbox::Dimension dimension_;
         std::map<std::string, ResourcesInfo> nameToResourceInfo_;
+
+        // see viewCopies: (type of the copies, hash of their resource names) -> the copies
+        std::map<std::pair<std::type_index, std::size_t>, std::shared_ptr<void>> viewCopies_;
 
         template<typename ResourcesManager, typename... ResourcesViews>
         friend class ResourcesGuard;

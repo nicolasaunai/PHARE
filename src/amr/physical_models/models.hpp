@@ -51,18 +51,20 @@ struct LevelAccessor
     // and must only write the data of its own patch. Same as exec when one thread is used.
     void concurrentExec(auto&& fn)
     {
-        auto const nthreads = core::nbrThreadsFor(size());
+        auto const nthreads = core::nbrThreads();
         if (nthreads == 1)
             return exec(fn);
 
-        // copied and destroyed on this thread: a view may hold python callables (user functions
-        // of the initializers), which only the thread holding the interpreter lock may copy
-        std::vector<std::tuple<Args...>> copies(nthreads, std::tuple<Args...>{args});
+        // made once by the resources manager: per call they would cost this thread, alone at
+        // work here, a time that grows with the number of threads
+        auto& copies = std::apply(
+            [&](auto&... resources) -> auto& { return rm_.viewCopies(nthreads, resources...); },
+            args);
 
-        std::vector<std::shared_ptr<patch_t>> patches;
+        std::vector<patch_t const*> patches; // owned by the level
         patches.reserve(size());
         for (auto const& patch : level_)
-            patches.push_back(patch);
+            patches.push_back(patch.get());
 
         core::parallel_for(patches.size(), [&](std::size_t const i) {
             std::apply(

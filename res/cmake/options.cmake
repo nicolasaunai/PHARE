@@ -67,10 +67,6 @@ option(withCaliper "Use LLNL Caliper" OFF)
 option(withPhlop "Use phlop for scope timings and such" OFF)
 
 
-# -Dthreads=OFF - OpenMP threads inside each MPI process, count set at run time by PHARE_THREADS
-option(threads "Run the patches of an MPI process on several threads" OFF)
-
-
 # -DuseExceptionsInsteadOfMPIAbort=ON
 option(useExceptionsInsteadOfMPIAbort "Exceptions use AllReduce!" OFF)
 
