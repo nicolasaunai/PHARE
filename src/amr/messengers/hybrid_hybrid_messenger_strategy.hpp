@@ -447,10 +447,27 @@ namespace amr
         }
 
 
-        void fillIonBorders(IonsT& /*ions*/, level_t& level, double const fillTime) override
+        void fillIonBorders(IonsT& ions, level_t& level, double const fillTime) override
         {
+            using value_type = FieldT::value_type;
+            auto constexpr N = core::detail::tensor_field_dim_from_rank<1>();
+
             assert(ionFluxBorderMaxRefiners_.size() == 1);    // charge flux
             assert(ionDensityBorderMaxRefiners_.size() == 1); // charge density
+
+            // A patch takes the maximum of its values and of copies of its neighbours': it must
+            // not read the values the threads of its neighbours are writing, see ExchangeJobs
+            amr::concurrentOnLevel(amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_,
+                                                                         ions, sumVec_, sumField_),
+                                   [&](auto& view) {
+                                       auto& [ions_v, sumVec, sumField] = view.args;
+                                       for (std::uint8_t c = 0; c < N; ++c)
+                                           std::memcpy(sumVec[c].data(),
+                                                       ions_v.chargeFlux()[c].data(),
+                                                       sumVec[c].size() * sizeof(value_type));
+                                       std::memcpy(sumField.data(), ions_v.chargeDensity().data(),
+                                                   sumField.size() * sizeof(value_type));
+                                   });
 
             for (auto& refiner : ionFluxBorderMaxRefiners_)
                 refiner.fill(level.getLevelNumber(), fillTime);
@@ -904,14 +921,14 @@ namespace amr
             for (auto const& field : info->maxBorderFields)
                 ionDensityBorderMaxRefiners_.emplace_back(resourcesManager_)
                     .addStaticRefiner(
-                        field, field, nullptr, field,
+                        field, sumField_.name(), nullptr, field,
                         std::make_shared<FieldGhostInterpOverlapFillPattern<GridLayoutT>>());
 
             assert(info->maxBorderVecFields.size() == 1); // charge flux
             for (auto const& vecfield : info->maxBorderVecFields)
                 ionFluxBorderMaxRefiners_.emplace_back(resourcesManager_)
                     .addStaticRefiner(
-                        vecfield, vecfield, nullptr, vecfield,
+                        vecfield, sumVec_.name(), nullptr, vecfield,
                         std::make_shared<
                             TensorFieldGhostInterpOverlapFillPattern<GridLayoutT, /*rank_=*/1>>());
         }

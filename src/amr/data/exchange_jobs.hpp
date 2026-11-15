@@ -35,8 +35,8 @@ namespace PHARE::amr
     - jobs writing the same destination run on one thread, in the order SAMRAI made the calls,
       so "the last writer wins" holds as in the serial walk;
     - jobs of different destinations run concurrently: a job must read nothing that a job of
-      another destination writes. Ghost fills write ghosts and read interiors, border sums read
-      a variable they do not write.
+      another destination writes. Ghost fills write ghosts and read interiors, border sums and
+      maxima read a variable they do not write.
   With one thread nothing is recorded and every call runs at once, as without this class.
 
   Attached to the schedules where they are stored (Communicator::add).
