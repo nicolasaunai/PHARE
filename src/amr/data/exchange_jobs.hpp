@@ -7,6 +7,7 @@
 #include <SAMRAI/tbox/ScheduleOpsStrategy.h>
 
 #include <new>
+#include <memory>
 #include <vector>
 #include <cstddef>
 #include <cstring>
@@ -37,6 +38,12 @@ namespace PHARE::amr
   With one thread nothing is recorded and every call runs at once, as without this class.
 
   Attached to the schedules where they are stored (Communicator::add).
+
+  The same is done for the work SAMRAI does patch after patch between two levels: interpolating
+  a fine level from the next coarser one, and coarsening a fine level. There the phase is opened
+  and closed by begin() and end(), called by the patch strategies of
+  concurrent_level_strategies.hpp, and the jobs are the calls to PHARE's refine and coarsen
+  operators, grouped by the patch they write.
 */
 class ExchangeJobs : public SAMRAI::tbox::ScheduleOpsStrategy
 {
@@ -93,6 +100,27 @@ public:
         groups_[group].push_back(job);
     }
 
+    // a copy of value that lives until the jobs of the phase have run: for what a job needs
+    // and its caller only lends, such as a local variable of a SAMRAI loop
+    template<typename T>
+    T const& keep(T const& value)
+    {
+        auto kept = std::make_shared<T>(value);
+        kept_.push_back(kept);
+        return *kept;
+    }
+
+    // opens a phase, in which jobs are recorded if there are several threads
+    void begin() { recording_ = core::nbrThreads() > 1; }
+
+    // closes the phase: its jobs have run on return
+    void end()
+    {
+        if (nGroups_ > 0)
+            run_();
+        recording_ = false;
+    }
+
     // runs the recorded jobs now: for a call that must not overtake them
     void settle()
     {
@@ -103,28 +131,19 @@ public:
     void preCommunicate() override {}
     void postCommunicate() override {}
 
-    void preCopy() override { start_(); }
-    void postCopy() override { stop_(); }
+    void preCopy() override { begin(); }
+    void postCopy() override { end(); }
 
-    void prePack() override { start_(); }
-    void postPack() override { stop_(); }
+    void prePack() override { begin(); }
+    void postPack() override { end(); }
 
-    void preUnpack() override { start_(); }
-    void postUnpack() override { stop_(); }
+    void preUnpack() override { begin(); }
+    void postUnpack() override { end(); }
 
     // a recorded pack fills its part of the message after SAMRAI's walk
     bool deferMessageSend() override { return core::nbrThreads() > 1; }
 
 private:
-    void start_() { recording_ = core::nbrThreads() > 1; }
-
-    void stop_()
-    {
-        if (nGroups_ > 0)
-            run_();
-        recording_ = false;
-    }
-
     void run_()
     {
         struct Running
@@ -135,6 +154,7 @@ private:
                 for (std::size_t g = 0; g < self.nGroups_; ++g)
                     self.groups_[g].clear();
                 self.nGroups_ = 0;
+                self.kept_.clear();
                 ++self.phase_;
                 // destinations stay known from one phase to the next, patch data of past
                 // hierarchies included: forget them all from time to time
@@ -166,8 +186,18 @@ private:
     std::size_t phase_   = 1;
     std::vector<std::vector<Job>> groups_; // kept between phases, only the first nGroups_ are used
     std::unordered_map<void const*, Group> groupOf_;
+    std::vector<std::shared_ptr<void>> kept_;
 };
 
+
+
+// value itself, or a copy of it kept for the jobs being recorded
+template<typename T>
+T const& forJobs(T const& value)
+{
+    auto& jobs = ExchangeJobs::instance();
+    return jobs.recording() ? jobs.keep(value) : value;
+}
 
 
 // copy() writes destination: now, or when the phase SAMRAI is walking ends

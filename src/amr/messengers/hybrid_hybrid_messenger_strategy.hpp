@@ -10,6 +10,7 @@
 
 #include "refiner_pool.hpp"
 #include "synchronizer_pool.hpp"
+#include "concurrent_level_strategies.hpp"
 
 #include "amr/data/field/coarsening/moments_coarsener.hpp"
 #include "amr/types/amr_types.hpp"
@@ -315,9 +316,8 @@ namespace amr
             auto const levelPtr = hierarchy->getPatchLevel(levelNumber);
 
             // init-only schedules are used once, so they are built at fill time, not stored
-            BalgoInit
-                .createSchedule(levelPtr, nullptr, levelNumber - 1, hierarchy,
-                                &magneticRefinePatchStrategy_)
+            onThreads(BalgoInit.createSchedule(levelPtr, nullptr, levelNumber - 1, hierarchy,
+                                               magneticRefineStrategy_()))
                 ->fillData(initDataTime);
             electricInitRefiners_.fillTransient(hierarchy, levelPtr, initDataTime);
 
@@ -556,7 +556,7 @@ namespace amr
 
             PHARE_LOG_SCOPE(3, "HybridHybridMessengerStrategy::lastStep");
 
-            amr::onLevel(
+            amr::concurrentOnLevel(
                 amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_,
                                                       static_cast<HybridModel&>(model).state.ions),
                 [&](auto& view) {
@@ -675,12 +675,14 @@ namespace amr
             auto const level = hierarchy->getPatchLevel(levelNumber);
 
             magPatchGhostsRefineSchedules[levelNumber]
-                = BalgoPatchGhost.createSchedule(level, &magneticRefinePatchStrategy_);
+                = onThreads(BalgoPatchGhost.createSchedule(level, magneticRefineStrategy_()));
 
-            elecPatchGhostsRefineSchedules[levelNumber] = EalgoPatchGhost.createSchedule(level);
+            elecPatchGhostsRefineSchedules[levelNumber]
+                = onThreads(EalgoPatchGhost.createSchedule(level));
 
             // technically not needed for finest as refluxing is not done onto it.
-            patchGhostRefluxedSchedules[levelNumber] = PatchGhostRefluxedAlgo.createSchedule(level);
+            patchGhostRefluxedSchedules[levelNumber]
+                = onThreads(PatchGhostRefluxedAlgo.createSchedule(level));
 
             // on the root level there is no coarser source, so these are same-level schedules
             if (levelNumber == rootLevelNumber)
@@ -715,7 +717,8 @@ namespace amr
 
             // refluxing
             auto const& coarseLevel      = hierarchy->getPatchLevel(levelNumber - 1);
-            refluxSchedules[levelNumber] = RefluxAlgo.createSchedule(coarseLevel, level);
+            refluxSchedules[levelNumber] = onThreads(RefluxAlgo.createSchedule(
+                coarseLevel, level, coarsenStrategyFor(coarsenOnThreads_)));
 
             lvlGhostPartNewRefiners_.registerLevel(hierarchy, level);
 
@@ -934,7 +937,7 @@ namespace amr
 
         void copyLevelGhostOldToPushable_(level_t& level, IPhysicalModel& model)
         {
-            amr::onLevel(
+            amr::concurrentOnLevel(
                 amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_,
                                                       static_cast<HybridModel&>(model).state.ions),
                 [&](auto& view) {
@@ -964,9 +967,9 @@ namespace amr
                                 level_ptr const& oldLevel, HybridModel& hybridModel,
                                 double const initDataTime)
         {
-            auto magSchedule = BregridAlgo.createSchedule(
+            auto magSchedule = onThreads(BregridAlgo.createSchedule(
                 level, oldLevel, level->getNextCoarserHierarchyLevelNumber(), hierarchy,
-                &magneticRefinePatchStrategy_);
+                magneticRefineStrategy_()));
             magSchedule->fillData(initDataTime);
         }
 
@@ -995,20 +998,22 @@ namespace amr
 
         void setNaNsOnFieldGhosts(FieldT& field, level_t const& level)
         {
-            amr::onLevel(amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_, field),
-                         [&](auto& view) {
-                             auto& [field_v] = view.args;
-                             setNaNsOnFieldGhosts(field_v);
-                         });
+            amr::concurrentOnLevel(
+                amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_, field),
+                [&](auto& view) {
+                    auto& [field_v] = view.args;
+                    setNaNsOnFieldGhosts(field_v);
+                });
         }
 
         void setNaNsOnVecfieldGhosts(VecFieldT& vf, level_t const& level)
         {
-            amr::onLevel(amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_, vf),
-                         [&](auto& view) {
-                             for (auto& field : std::get<0>(view.args))
-                                 setNaNsOnFieldGhosts(field);
-                         });
+            amr::concurrentOnLevel(
+                amr::make_level_accessor<GridLayoutT>(level, *resourcesManager_, vf),
+                [&](auto& view) {
+                    for (auto& field : std::get<0>(view.args))
+                        setNaNsOnFieldGhosts(field);
+                });
         }
 
         VecFieldT Bold_{stratName + "_Bold", core::HybridQuantity::Vector::B};
@@ -1152,6 +1157,16 @@ namespace amr
 
         MagneticRefinePatchStrategy<VectorFieldDataT, BoundaryManagerT>
             magneticRefinePatchStrategy_{*boundaryManager_};
+
+        // for the schedules made here of a process with several threads: the refinement and
+        // the coarsening of a level then run on them
+        ConcurrentRefinePatchStrategy magneticRefineOnThreads_{&magneticRefinePatchStrategy_};
+        ConcurrentCoarsenPatchStrategy coarsenOnThreads_;
+
+        auto magneticRefineStrategy_()
+        {
+            return refineStrategyFor(&magneticRefinePatchStrategy_, magneticRefineOnThreads_);
+        }
 
         std::vector<
             std::shared_ptr<MagneticRefinePatchStrategy<VectorFieldDataT, BoundaryManagerT>>>

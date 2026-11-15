@@ -2,6 +2,7 @@
 #define PHARE_SYNCHRONIZER_HPP
 
 #include "communicator.hpp"
+#include "concurrent_level_strategies.hpp"
 #include "core/data/vecfield/vecfield.hpp"
 
 namespace PHARE::amr
@@ -29,7 +30,9 @@ public:
         auto const& coarseLevel = hierarchy->getPatchLevel(levelNumber - 1);
 
         for (auto& algo : this->algos)
-            this->add(algo, algo->createSchedule(coarseLevel, level), levelNumber);
+            this->add(algo,
+                      algo->createSchedule(coarseLevel, level, coarsenStrategyFor(*onThreads_)),
+                      levelNumber);
     }
 
 
@@ -47,6 +50,11 @@ public:
         for (auto const& algo : this->algos)
             this->findSchedule(algo, levelNumber)->coarsenData();
     }
+
+private:
+    // lets the coarsening of a level run on the process threads
+    std::shared_ptr<ConcurrentCoarsenPatchStrategy> onThreads_
+        = std::make_shared<ConcurrentCoarsenPatchStrategy>();
 };
 } // namespace PHARE::amr
 

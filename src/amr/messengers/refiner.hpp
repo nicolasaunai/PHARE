@@ -2,6 +2,7 @@
 #define PHARE_REFINER_HPP
 
 #include "communicator.hpp"
+#include "concurrent_level_strategies.hpp"
 
 #include "amr/messengers/field_operate_transaction.hpp"
 #include "core/utilities/types.hpp"
@@ -56,7 +57,19 @@ class Refiner : private Communicator<RefinerTypes, ResourcesManager::dimension>
 
     std::shared_ptr<SAMRAI::xfer::RefinePatchStrategy> patchStrat_ = nullptr;
 
+    // patchStrat_ for the schedules of a process with several threads
+    mutable std::shared_ptr<ConcurrentRefinePatchStrategy> patchStratOnThreads_ = nullptr;
+
 private:
+    // the strategy schedules are created with
+    SAMRAI::xfer::RefinePatchStrategy* strategy_() const
+    {
+        if (!patchStratOnThreads_)
+            patchStratOnThreads_
+                = std::make_shared<ConcurrentRefinePatchStrategy>(patchStrat_.get());
+        return refineStrategyFor(patchStrat_.get(), *patchStratOnThreads_);
+    }
+
     // builds (does not store) the schedule for this Refiner's Type on the given level
     std::shared_ptr<SAMRAI::xfer::RefineSchedule>
     makeSchedule_(std::shared_ptr<SAMRAI::hier::PatchHierarchy> const& hierarchy,
@@ -86,12 +99,12 @@ private:
         if constexpr (Type == RefinerType::GhostField)
         {
             return algo->createSchedule(level, level->getNextCoarserHierarchyLevelNumber(),
-                                        hierarchy, patchStrat_.get());
+                                        hierarchy, strategy_());
         }
 
         else if constexpr (Type == RefinerType::PatchGhostField)
         {
-            return algo->createSchedule(level, patchStrat_.get());
+            return algo->createSchedule(level, strategy_());
         }
 
 
@@ -100,7 +113,7 @@ private:
         else if constexpr (Type == RefinerType::PatchFieldBorderSum)
         {
             return algo->createSchedule(
-                level, patchStrat_.get(),
+                level, strategy_(),
                 std::make_shared<FieldBorderOpTransactionFactory<FieldData_t, PlusEqualsOp>>());
         }
 
@@ -108,7 +121,7 @@ private:
         else if constexpr (Type == RefinerType::PatchTensorFieldBorderSum)
         {
             return algo->createSchedule(
-                level, patchStrat_.get(),
+                level, strategy_(),
                 std::make_shared<
                     FieldBorderOpTransactionFactory<TensorFieldData_t, PlusEqualsOp>>());
         }
@@ -117,7 +130,7 @@ private:
         else if constexpr (Type == RefinerType::PatchVecFieldBorderSum)
         {
             return algo->createSchedule(
-                level, patchStrat_.get(),
+                level, strategy_(),
                 std::make_shared<FieldBorderOpTransactionFactory<VecFieldData_t, PlusEqualsOp>>());
         }
 
@@ -127,7 +140,7 @@ private:
         else if constexpr (Type == RefinerType::PatchFieldBorderMax)
         {
             return algo->createSchedule(
-                level, patchStrat_.get(),
+                level, strategy_(),
                 std::make_shared<FieldBorderOpTransactionFactory<FieldData_t, SetMaxOp>>());
         }
 
@@ -137,7 +150,7 @@ private:
         else if constexpr (Type == RefinerType::PatchVecFieldBorderMax)
         {
             return algo->createSchedule(
-                level, patchStrat_.get(),
+                level, strategy_(),
                 std::make_shared<FieldBorderOpTransactionFactory<VecFieldData_t, SetMaxOp>>());
         }
 
@@ -150,7 +163,7 @@ private:
         else if constexpr (Type == RefinerType::InitField)
         {
             return algo->createSchedule(level, nullptr, levelNumber - 1, hierarchy,
-                                        patchStrat_.get());
+                                        strategy_());
         }
 
 
@@ -166,7 +179,7 @@ private:
         {
             return algo->createSchedule(
                 std::make_shared<SAMRAI::xfer::PatchLevelInteriorFillPattern>(), level, nullptr,
-                levelNumber - 1, hierarchy, patchStrat_.get());
+                levelNumber - 1, hierarchy, strategy_());
         }
 
 
@@ -177,7 +190,7 @@ private:
         {
             return algo->createSchedule(
                 std::make_shared<SAMRAI::xfer::PatchLevelBorderFillPattern>(), level,
-                level->getNextCoarserHierarchyLevelNumber(), hierarchy, patchStrat_.get());
+                level->getNextCoarserHierarchyLevelNumber(), hierarchy, strategy_());
         }
 
 
@@ -189,13 +202,13 @@ private:
         {
             return algo->createSchedule(
                 std::make_shared<SAMRAI::xfer::PatchLevelBorderFillPattern>(), level, nullptr,
-                levelNumber - 1, hierarchy, patchStrat_.get());
+                levelNumber - 1, hierarchy, strategy_());
         }
 
 
         else if constexpr (Type == RefinerType::ExteriorGhostParticles)
         {
-            return algo->createSchedule(level, patchStrat_.get());
+            return algo->createSchedule(level, strategy_());
         }
 
         else
@@ -225,7 +238,7 @@ public:
             throw std::runtime_error("Algorithms are not configured");
 
         for (auto const& algo : this->algos)
-            makeSchedule_(hierarchy, level, algo)->fillData(fillTime);
+            onThreads(makeSchedule_(hierarchy, level, algo))->fillData(fillTime);
     }
 
 
@@ -248,15 +261,15 @@ public:
                 auto schedule = algo->createSchedule(
                     std::make_shared<SAMRAI::xfer::PatchLevelInteriorFillPattern>(), level,
                     oldLevel, level->getNextCoarserHierarchyLevelNumber(), hierarchy,
-                    patchStrat_.get());
-                schedule->fillData(initDataTime);
+                    strategy_());
+                onThreads(schedule)->fillData(initDataTime);
             }
             else
             {
                 auto schedule = algo->createSchedule(level, oldLevel,
                                                      level->getNextCoarserHierarchyLevelNumber(),
-                                                     hierarchy, patchStrat_.get());
-                schedule->fillData(initDataTime);
+                                                     hierarchy, strategy_());
+                onThreads(schedule)->fillData(initDataTime);
             }
         }
     }

@@ -98,10 +98,26 @@ namespace amr
          * in FieldCoarsen operator
          *
          */
+        // Done with the other patches of the level, on the process threads, when SAMRAI is
+        // coarsening a whole level: see ConcurrentCoarsenPatchStrategy. The ratio is a local
+        // variable of SAMRAI's loop over the patches.
         void coarsen(SAMRAI::hier::Patch& destinationPatch, SAMRAI::hier::Patch const& sourcePatch,
                      int const destinationId, int const sourceId,
                      SAMRAI::hier::Box const& coarseBox,
                      SAMRAI::hier::IntVector const& ratio) const override
+        {
+            copyOrDefer(&destinationPatch, [this, &destinationPatch, &sourcePatch, destinationId,
+                                            sourceId, &coarseBox, ratio = &forJobs(ratio)]() {
+                coarsenNow_(destinationPatch, sourcePatch, destinationId, sourceId, coarseBox,
+                            *ratio);
+            });
+        }
+
+    private:
+        void coarsenNow_(SAMRAI::hier::Patch& destinationPatch,
+                         SAMRAI::hier::Patch const& sourcePatch, int const destinationId,
+                         int const sourceId, SAMRAI::hier::Box const& coarseBox,
+                         SAMRAI::hier::IntVector const& ratio) const
         {
             auto& destinationField   = FieldDataT::getField(destinationPatch, destinationId);
             auto const& sourceField  = FieldDataT::getField(sourcePatch, sourceId);
@@ -202,6 +218,21 @@ public:
     void coarsen(SAMRAI::hier::Patch& destinationPatch, SAMRAI::hier::Patch const& sourcePatch,
                  int const destinationId, int const sourceId, SAMRAI::hier::Box const& coarseBox,
                  SAMRAI::hier::IntVector const& ratio) const override
+    {
+        // done with the other patches of the level, on the process threads, when SAMRAI is
+        // coarsening a whole level: see ConcurrentCoarsenPatchStrategy. The ratio is a local
+        // variable of SAMRAI's loop over the patches.
+        copyOrDefer(&destinationPatch, [this, &destinationPatch, &sourcePatch, destinationId,
+                                        sourceId, &coarseBox, ratio = &forJobs(ratio)]() {
+            coarsenNow_(destinationPatch, sourcePatch, destinationId, sourceId, coarseBox, *ratio);
+        });
+    }
+
+private:
+    void coarsenNow_(SAMRAI::hier::Patch& destinationPatch, SAMRAI::hier::Patch const& sourcePatch,
+                     int const destinationId, int const sourceId,
+                     SAMRAI::hier::Box const& coarseBox,
+                     SAMRAI::hier::IntVector const& ratio) const
     {
         auto& destinationFields  = TensorFieldDataT::getFields(destinationPatch, destinationId);
         auto const& sourceFields = TensorFieldDataT::getFields(sourcePatch, sourceId);

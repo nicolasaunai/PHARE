@@ -91,6 +91,20 @@ namespace amr
                             SAMRAI::hier::BoxOverlap const& fineOverlap,
                             SAMRAI::hier::IntVector const& /*ratio*/) const override
         {
+            // done with the other patches of the level, on the process threads, when SAMRAI
+            // is interpolating a whole level: see ConcurrentRefinePatchStrategy
+            copyOrDefer(&destination, [this, &destination, &source, destinationComponent,
+                                       sourceComponent, &fineOverlap]() {
+                refineNow_(destination, source, destinationComponent, sourceComponent,
+                           fineOverlap);
+            });
+        }
+
+    private:
+        void refineNow_(SAMRAI::hier::Patch& destination, SAMRAI::hier::Patch const& source,
+                        int const destinationComponent, int const sourceComponent,
+                        SAMRAI::hier::BoxOverlap const& fineOverlap) const
+        {
             // For the particles we index them as a CellIndex (for the iCell)
             // ie the particles in the iCell live between lower left node of the iCell
             // and upper right of the same iCell
@@ -127,7 +141,6 @@ namespace amr
             refine_(*destinationParticlesData, *sourceParticlesData, destinationFieldOverlap);
         }
 
-    private:
         std::string splitName_(ParticlesDataSplitType splitTypeUsed)
         {
             switch (splitTypeUsed)

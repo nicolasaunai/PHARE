@@ -316,10 +316,11 @@ void SolverPPC<HybridModel, AMR_Types>::resetFluxSum(IPhysicalModel_t& model, le
 
     auto& hybridModel = dynamic_cast<HybridModel&>(model);
 
-    amr::onLevel(amr::make_model_level_accessor(level, hybridModel, fluxSumE_), [&](auto& view) {
-        auto& [fluxSumE] = view.args;
-        fluxSumE.zero();
-    });
+    amr::concurrentOnLevel(amr::make_model_level_accessor(level, hybridModel, fluxSumE_),
+                           [&](auto& view) {
+                               auto& [fluxSumE] = view.args;
+                               fluxSumE.zero();
+                           });
 }
 
 

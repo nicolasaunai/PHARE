@@ -210,7 +210,10 @@ public:
         auto const region
             = reconstructionRegion(fine_box, fine.getPatchData(data_id_)->getGhostBox());
 
-        touchUpInteriorFaces(fields, layout, region, scratch_);
+        // one per thread: the touch-ups of the patches of a level run on the process threads
+        // (ConcurrentRefinePatchStrategy)
+        static thread_local DivScratch scratch;
+        touchUpInteriorFaces(fields, layout, region, scratch);
     }
 
 
@@ -343,7 +346,6 @@ private:
         return div;
     }
 
-    DivScratch scratch_;
 };
 
 } // namespace PHARE::amr

@@ -56,10 +56,25 @@ public:
         return SAMRAI::hier::IntVector(dim, kernel_->coarseStencilWidth());
     }
 
+    // Done with the other patches of the level, on the process threads, when SAMRAI is
+    // interpolating a whole level: see ConcurrentRefinePatchStrategy. The ratio is a local
+    // variable of SAMRAI's loop over the patches.
     void refine(SAMRAI::hier::Patch& destination, SAMRAI::hier::Patch const& source,
                 int const destinationId, int const sourceId,
                 SAMRAI::hier::BoxOverlap const& destinationOverlap,
                 SAMRAI::hier::IntVector const& ratio) const override
+    {
+        copyOrDefer(&destination, [this, &destination, &source, destinationId, sourceId,
+                                   &destinationOverlap, ratio = &forJobs(ratio)]() {
+            refineNow_(destination, source, destinationId, sourceId, destinationOverlap, *ratio);
+        });
+    }
+
+private:
+    void refineNow_(SAMRAI::hier::Patch& destination, SAMRAI::hier::Patch const& source,
+                    int const destinationId, int const sourceId,
+                    SAMRAI::hier::BoxOverlap const& destinationOverlap,
+                    SAMRAI::hier::IntVector const& ratio) const
     {
         using FieldGeometry = FieldDataT::Geometry;
 
@@ -90,7 +105,6 @@ public:
         }
     }
 
-private:
     std::unique_ptr<Kernel_t> kernel_;
 };
 
@@ -129,10 +143,25 @@ public:
         return SAMRAI::hier::IntVector(dim, kernel_->coarseStencilWidth());
     }
 
+    // Done with the other patches of the level, on the process threads, when SAMRAI is
+    // interpolating a whole level: see ConcurrentRefinePatchStrategy. The ratio is a local
+    // variable of SAMRAI's loop over the patches.
     void refine(SAMRAI::hier::Patch& destination, SAMRAI::hier::Patch const& source,
                 int const destinationId, int const sourceId,
                 SAMRAI::hier::BoxOverlap const& destinationOverlap,
                 SAMRAI::hier::IntVector const& ratio) const override
+    {
+        copyOrDefer(&destination, [this, &destination, &source, destinationId, sourceId,
+                                   &destinationOverlap, ratio = &forJobs(ratio)]() {
+            refineNow_(destination, source, destinationId, sourceId, destinationOverlap, *ratio);
+        });
+    }
+
+private:
+    void refineNow_(SAMRAI::hier::Patch& destination, SAMRAI::hier::Patch const& source,
+                    int const destinationId, int const sourceId,
+                    SAMRAI::hier::BoxOverlap const& destinationOverlap,
+                    SAMRAI::hier::IntVector const& ratio) const
     {
         auto const& destinationTensorFieldOverlap
             = dynamic_cast<TensorFieldOverlap_t const&>(destinationOverlap);
@@ -166,7 +195,6 @@ public:
         }
     }
 
-private:
     std::unique_ptr<Kernel_t> kernel_;
 };
 

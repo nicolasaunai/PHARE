@@ -91,8 +91,9 @@ struct TimeSetter
 {
     void operator()(auto&... quantities)
     {
-        amr::onLevel(amr::make_model_level_accessor(level, model, quantities...),
-                     [&](auto& view) { view.setTime(newTime, quantities...); });
+        // quantities are only read for the names of their resources
+        amr::concurrentOnLevel(amr::make_model_level_accessor(level, model, quantities...),
+                               [&](auto& view) { view.setTime(newTime, quantities...); });
     }
 
     level_t& level;
