@@ -9,8 +9,13 @@ Settings come from the environment so one script serves every run of a scan:
   BENCH_PPC        particles per cell, 100
   BENCH_STEPS      coarse time steps, 20
   BENCH_LEVELS     1 (no refinement) or 2 (one refined box over both sheets), 1
+  BENCH_REFINE     "boxes": the refined box is given and never moves (default);
+                   "tagging": cells are tagged and the hierarchy regridded as the run goes
   BENCH_PATCH      largest_patch_size, 25: this sets how many patches a thread can pick from
   BENCH_DIAG_DIR   where to write E, B, moments and particles at the last step, none if unset
+  BENCH_DIAG_EVERY with BENCH_DIAG_DIR: E, B and moments every that many steps, no particles
+  BENCH_AFFINITY   if set, every rank prints the cpus its threads may run on, after the run
+  BENCH_TAG        free text copied in the BENCH line, to tell the runs of a scan apart
 
 Prints one line "BENCH key=value ..." on rank 0 with the wall times of the initialization and of
 the advance loop.
@@ -31,8 +36,10 @@ cells = tuple(int(n) for n in os.environ.get("BENCH_CELLS", "400x200").split("x"
 ppc = int(os.environ.get("BENCH_PPC", 100))
 steps = int(os.environ.get("BENCH_STEPS", 20))
 levels = int(os.environ.get("BENCH_LEVELS", 1))
+refine = os.environ.get("BENCH_REFINE", "boxes")
 largest_patch_size = int(os.environ.get("BENCH_PATCH", 25))
 diag_dir = os.environ.get("BENCH_DIAG_DIR")
+diag_every = int(os.environ.get("BENCH_DIAG_EVERY", 0))
 
 dl = (0.4, 0.4)
 time_step = 0.005
@@ -43,7 +50,9 @@ def config():
     L = 0.5
 
     refinement = {}
-    if levels == 2:
+    if levels == 2 and refine == "tagging":
+        refinement = {"refinement": "tagging", "max_nbr_levels": 2, "nesting_buffer": 1}
+    elif levels == 2:
         # one box over the middle half in y, where both current sheets are, clear of the
         # periodic x boundaries
         lower = (cells[0] // 8, cells[1] // 4)
@@ -123,15 +132,38 @@ def config():
     ph.ElectronModel(closure="isothermal", Te=0.0)
 
     if diag_dir:
-        last = [final_time]
+        times = [final_time]
+        if diag_every:
+            times = [step * time_step for step in range(diag_every, steps + 1, diag_every)]
         for quantity in ["E", "B"]:
-            ph.ElectromagDiagnostics(quantity=quantity, write_timestamps=last)
+            ph.ElectromagDiagnostics(quantity=quantity, write_timestamps=times)
         for quantity in ["charge_density", "bulkVelocity"]:
-            ph.FluidDiagnostics(quantity=quantity, write_timestamps=last)
-        ph.ParticleDiagnostics(
-            quantity="domain", write_timestamps=last, population_name="protons"
-        )
+            ph.FluidDiagnostics(quantity=quantity, write_timestamps=times)
+        if not diag_every:
+            ph.ParticleDiagnostics(
+                quantity="domain", write_timestamps=times, population_name="protons"
+            )
     return sim
+
+
+def affinity():
+    """The cpus each thread of this process may run on: "pinned" threads have a single one."""
+    allowed = []
+    for task in os.listdir("/proc/self/task"):
+        try:
+            with open(f"/proc/self/task/{task}/status") as status:
+                for line in status:
+                    if line.startswith("Cpus_allowed_list"):
+                        allowed.append(line.split(":")[1].strip())
+        except OSError:  # the thread ended meanwhile
+            pass
+    pinned = sorted(int(cpus) for cpus in allowed if cpus.isdigit())
+    free = sorted(set(cpus for cpus in allowed if not cpus.isdigit()))
+    return (
+        f"BENCH_AFFINITY rank={cpp.mpi_rank()} threads={len(allowed)}"
+        f" pinned={len(pinned)} pinned_cpus={','.join(map(str, pinned)) or 'none'}"
+        f" others_may_run_on={'|'.join(free) or 'none'}"
+    )
 
 
 def main():
@@ -145,20 +177,28 @@ def main():
         simulator.advance()
     advance = time.perf_counter() - start
 
+    # one write per line: the lines of several ranks must not get mixed
+    if os.environ.get("BENCH_AFFINITY"):
+        print(affinity() + "\n", end="", flush=True)
+
     if cpp.mpi_rank() == 0:
-        print(
-            "BENCH",
-            f"ranks={cpp.mpi_size()}",
-            f"threads={os.environ.get('PHARE_THREADS', 1)}",
-            f"cells={cells[0]}x{cells[1]}",
-            f"ppc={ppc}",
-            f"levels={levels}",
-            f"patch={largest_patch_size}",
-            f"steps={steps}",
-            f"init_s={initialize:.3f}",
-            f"advance_s={advance:.3f}",
-            flush=True,
+        line = " ".join(
+            [
+                "BENCH",
+                os.environ.get("BENCH_TAG", ""),
+                f"ranks={cpp.mpi_size()}",
+                f"threads={os.environ.get('PHARE_THREADS', 1)}",
+                f"cells={cells[0]}x{cells[1]}",
+                f"ppc={ppc}",
+                f"levels={levels}",
+                f"refine={refine}",
+                f"patch={largest_patch_size}",
+                f"steps={steps}",
+                f"init_s={initialize:.3f}",
+                f"advance_s={advance:.3f}",
+            ]
         )
+        print(line + "\n", end="", flush=True)
     simulator.reset()
 
 
