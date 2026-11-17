@@ -569,6 +569,29 @@ quantitiesDict(std::map<std::string, double> const& qs,
     return dict;
 }
 
+// pharein always writes both Löhner parameters, with these defaults when the user gives none
+// (pyphare/pyphare/pharein/tagging.py); C++ requires them
+LohnerParameters constexpr phareinLohnerDefaults{0.01, 1e-8};
+
+// quantitiesDict with both Löhner parameters, those in `parameters` overriding pharein's defaults
+PHARE::initializer::PHAREDict
+lohnerDict(std::map<std::string, double> const& qs,
+           std::map<std::string, std::map<std::string, double>> parameters = {})
+{
+    for (auto const& [name, _] : qs)
+    {
+        parameters[name].try_emplace("reltol", phareinLohnerDefaults.reltol);
+        parameters[name].try_emplace("ref_magnitude", phareinLohnerDefaults.refMagnitude);
+    }
+    return quantitiesDict(qs, parameters);
+}
+
+// what pharein writes for a Löhner method without explicit quantities: B at tagging_threshold
+PHARE::initializer::PHAREDict lohnerFallbackDict()
+{
+    return lohnerDict({{"B", 0.1}});
+}
+
 template<typename Model>
 void fillMHDStep(Model& model, double low, double high)
 {
@@ -1080,7 +1103,7 @@ double lohnerOnDualBy(Fn&& fn, std::uint32_t i, double reltol)
     auto& By = model.state.electromag.B.getComponent(PHARE::core::Component::Y);
     fillField(By, [&](auto const& idx) { return fn(idx[0]); });
 
-    LohnerPerDirectionTaggerStrategy<Model> const lohner{PHARE::initializer::PHAREDict{}};
+    LohnerPerDirectionTaggerStrategy<Model> const lohner{lohnerFallbackDict()};
     return lohner.indicator(
         std::array{field_type{By, {PHARE::core::QtyCentering::dual}, model.layout}}, {i},
         model.layout, LohnerParameters{reltol, 1e-30});
@@ -1118,11 +1141,11 @@ TEST(LohnerStrategy, TagsStepNotRamp)
 {
     MockMHDModel<2> model;
     fillMHDStep(model, 1., 2.);
-    auto const step = lohnerTags(model, quantitiesDict({{"rho", 0.5}}));
+    auto const step = lohnerTags(model, lohnerDict({{"rho", 0.5}}));
     expectColumns(model, step, {9, 10}, {0, 1, 2, 3, 4, 5, 6, 13, 14, 15, 16, 17, 18, 19});
 
     fillField(model.state.rho, [](auto const& idx) { return static_cast<double>(idx[0]); });
-    auto const ramp = lohnerTags(model, quantitiesDict({{"rho", 0.5}}));
+    auto const ramp = lohnerTags(model, lohnerDict({{"rho", 0.5}}));
     EXPECT_EQ(std::count(ramp.begin(), ramp.end(), 1), 0);
     EXPECT_EQ(std::count(ramp.begin(), ramp.end(), -1), 0);
 }
@@ -1131,31 +1154,49 @@ TEST(LohnerStrategy, ReltolFromQuantityDict)
 {
     MockMHDModel<2> model;
     fillMHDStep(model, 100., 100.01);
-    auto const damped = lohnerTags(model, quantitiesDict({{"rho", 0.5}}));
+    auto const damped = lohnerTags(model, lohnerDict({{"rho", 0.5}}));
     EXPECT_EQ(std::count(damped.begin(), damped.end(), 1), 0);
 
     auto const undamped
-        = lohnerTags(model, quantitiesDict({{"rho", 0.5}}, {{"rho", {{"reltol", 0.0}}}}));
+        = lohnerTags(model, lohnerDict({{"rho", 0.5}}, {{"rho", {{"reltol", 0.0}}}}));
     expectColumns(model, undamped, {9, 10}, {0, 1, 2, 3, 4, 5, 6, 13, 14, 15, 16, 17, 18, 19});
 }
 
-TEST(LohnerParameters, ReadsKeysWithDefaults)
+TEST(LohnerParameters, ReadsKeys)
 {
     PHARE::initializer::PHAREDict q;
-    q["reltol"]     = 0.02;
+    q["reltol"]        = 0.02;
     q["ref_magnitude"] = 1e-6;
-    auto const read = LohnerParameters::read(q, "B");
+    auto const read    = LohnerParameters::read(q, "B");
     EXPECT_EQ(read.reltol, 0.02);
     EXPECT_EQ(read.refMagnitude, 1e-6);
-    auto const defaults = LohnerParameters::read(PHARE::initializer::PHAREDict{}, "B");
-    EXPECT_EQ(defaults.reltol, 0.01);
-    EXPECT_EQ(defaults.refMagnitude, 1e-8);
+}
+
+TEST(LohnerParameters, MissingKeyThrowsNamingTheQuantity)
+{
+    for (auto const& [present, missing] :
+         {std::pair{"reltol", "ref_magnitude"}, std::pair{"ref_magnitude", "reltol"}})
+    {
+        PHARE::initializer::PHAREDict q;
+        q[std::string{present}] = 0.01;
+        try
+        {
+            LohnerParameters::read(q, "rho");
+            ADD_FAILURE() << "no throw without " << missing;
+        }
+        catch (std::runtime_error const& e)
+        {
+            EXPECT_TRUE(contains(e.what(), "rho") and contains(e.what(), missing)) << e.what();
+        }
+    }
 }
 
 std::string lohnerParametersError(std::string const& key, double value)
 {
     PHARE::initializer::PHAREDict q;
-    q[key] = value;
+    q["reltol"]        = phareinLohnerDefaults.reltol;
+    q["ref_magnitude"] = phareinLohnerDefaults.refMagnitude;
+    q[key]             = value;
     try
     {
         LohnerParameters::read(q, "rho");
@@ -1196,12 +1237,15 @@ TEST(LohnerStrategy, PerQuantityParametersFollowTheName)
     fillMHDStep(model, 100., 100.01);
     fillConstant(model.state.Etot, 3.);
     PHARE::initializer::PHAREDict dict;
-    dict["nbr_quantities"]  = 2;
-    dict["Q0"]["name"]      = std::string{"rho"};
-    dict["Q0"]["threshold"] = 0.5;
-    dict["Q0"]["reltol"]    = 0.0;
-    dict["Q1"]["name"]      = std::string{"Etot"};
-    dict["Q1"]["threshold"] = 0.5;
+    dict["nbr_quantities"]      = 2;
+    dict["Q0"]["name"]          = std::string{"rho"};
+    dict["Q0"]["threshold"]     = 0.5;
+    dict["Q0"]["reltol"]        = 0.0;
+    dict["Q0"]["ref_magnitude"] = phareinLohnerDefaults.refMagnitude;
+    dict["Q1"]["name"]          = std::string{"Etot"};
+    dict["Q1"]["threshold"]     = 0.5;
+    dict["Q1"]["reltol"]        = phareinLohnerDefaults.reltol;
+    dict["Q1"]["ref_magnitude"] = phareinLohnerDefaults.refMagnitude;
     expectColumns(model, lohnerTags(model, dict), {9, 10},
                   {0, 1, 2, 3, 4, 5, 6, 13, 14, 15, 16, 17, 18, 19});
 }
@@ -1219,8 +1263,8 @@ TEST(LohnerStrategy, RefMagnitudeIsANoiseLevel)
     MockHybridModel<1> model;
     fillAlternatingBy(model, 1e-3);
 
-    auto const below = quantitiesDict({{"By", 0.5}}, {{"By", {{"ref_magnitude", 1e-8}}}});
-    auto const above = quantitiesDict({{"By", 0.5}}, {{"By", {{"ref_magnitude", 1e-2}}}});
+    auto const below = lohnerDict({{"By", 0.5}}, {{"By", {{"ref_magnitude", 1e-8}}}});
+    auto const above = lohnerDict({{"By", 0.5}}, {{"By", {{"ref_magnitude", 1e-2}}}});
     EXPECT_TRUE(allEqual(lohnerTags(model, below), 1));
     EXPECT_TRUE(allEqual(lohnerTags(model, above), 0));
 }
@@ -1232,21 +1276,11 @@ TEST(LohnerStrategy, RefMagnitudeMustBeSeveralTimesTheNoise)
     double constexpr threshold = 0.5;
     fillAlternatingBy(model, sigma);
 
-    auto const atNoise = quantitiesDict({{"By", threshold}}, {{"By", {{"ref_magnitude", sigma}}}});
-    auto const severalTimes = quantitiesDict(
+    auto const atNoise      = lohnerDict({{"By", threshold}}, {{"By", {{"ref_magnitude", sigma}}}});
+    auto const severalTimes = lohnerDict(
         {{"By", threshold}}, {{"By", {{"ref_magnitude", 4. * sigma * (1. / threshold - 1.)}}}});
     EXPECT_TRUE(allEqual(lohnerTags(model, atNoise), 1));
     EXPECT_TRUE(allEqual(lohnerTags(model, severalTimes), 0));
-}
-
-TEST(LohnerStrategy, DefaultRefMagnitudeIs1e8)
-{
-    MockHybridModel<1> model;
-    fillAlternatingBy(model, 1e-9);
-
-    auto const noRefMagnitude = quantitiesDict({{"By", 0.5}}, {{"By", {{"ref_magnitude", 0.}}}});
-    EXPECT_TRUE(allEqual(lohnerTags(model, quantitiesDict({{"By", 0.5}})), 0));
-    EXPECT_TRUE(allEqual(lohnerTags(model, noRefMagnitude), 1));
 }
 
 template<typename Strategy, typename Model, typename Fn>
@@ -1257,7 +1291,7 @@ double indicatorAt(Model& model, Fn&& fn, std::array<std::uint32_t, Model::dimen
     fillField(model.state.rho, [&](auto const& idx) { return fn(idx); });
     auto const allDual = PHARE::core::ConstArray<PHARE::core::QtyCentering, Model::dimension>(
         PHARE::core::QtyCentering::dual);
-    return Strategy{PHARE::initializer::PHAREDict{}}.indicator(
+    return Strategy{lohnerFallbackDict()}.indicator(
         std::array{typename Strategy::recentered_field_type{model.state.rho, allDual, layout}},
         cell, layout, LohnerParameters{reltol, refMagnitude});
 }
@@ -1279,19 +1313,6 @@ TEST(LohnerPerDirection, ZeroFieldWithoutRefMagnitudeIsZero)
     EXPECT_EQ((indicatorAt<LohnerPerDirectionTaggerStrategy<MockMHDModel<2>>>(
                   model, [](auto const&) { return 0.; }, {10, 10}, 0.01, 0., model.layout)),
               0.);
-}
-
-TEST(LohnerPerDirection, DefaultReltolIs001)
-{
-    MockMHDModel<1> model;
-    fillField(model.state.rho, [](auto const& idx) { return idx[0] <= 10 ? 0. : 1.; });
-    auto const allDual
-        = PHARE::core::ConstArray<PHARE::core::QtyCentering, 1>(PHARE::core::QtyCentering::dual);
-    LohnerPerDirectionTaggerStrategy<MockMHDModel<1>> const lohner{PHARE::initializer::PHAREDict{}};
-    using field_type = LohnerPerDirectionTaggerStrategy<MockMHDModel<1>>::recentered_field_type;
-    EXPECT_NEAR(lohner.indicator(std::array{field_type{model.state.rho, allDual, model.layout}},
-                                 {10}, model.layout, LohnerParameters{}),
-                1. / 1.01, 1e-7);
 }
 
 using PerDirection2 = LohnerPerDirectionTaggerStrategy<MockMHDModel<2>>;
@@ -1352,19 +1373,6 @@ TEST(LohnerCrossDerivatives, ZeroFieldWithoutRefMagnitudeIsZero)
               0.);
 }
 
-TEST(LohnerCrossDerivatives, DefaultReltolIs001)
-{
-    MockMHDModel<1> model;
-    fillField(model.state.rho, [](auto const& idx) { return idx[0] <= 11 ? 0. : 1.; });
-    auto const allDual
-        = PHARE::core::ConstArray<PHARE::core::QtyCentering, 1>(PHARE::core::QtyCentering::dual);
-    Cross1 const cross{PHARE::initializer::PHAREDict{}};
-    EXPECT_NEAR(cross.indicator(std::array{Cross1::recentered_field_type{model.state.rho, allDual,
-                                                                         model.layout}},
-                                {10}, model.layout, LohnerParameters{}),
-                1. / 1.01, 1e-7);
-}
-
 TEST(LohnerCrossDerivatives, BoundedOnRandomFields)
 {
     MockMHDModel<2> model;
@@ -1373,7 +1381,7 @@ TEST(LohnerCrossDerivatives, BoundedOnRandomFields)
     fillField(model.state.rho, [&](auto const&) { return dist(gen); });
     auto const allDual
         = PHARE::core::ConstArray<PHARE::core::QtyCentering, 2>(PHARE::core::QtyCentering::dual);
-    PHARE::initializer::PHAREDict dict;
+    auto const dict = lohnerFallbackDict();
     Cross2 const cross{dict};
     PerDirection2 const perDirection{dict};
     for (std::uint32_t i = 4; i < 20; ++i)
@@ -1381,11 +1389,11 @@ TEST(LohnerCrossDerivatives, BoundedOnRandomFields)
         {
             EXPECT_LT(cross.indicator(std::array{Cross2::recentered_field_type{
                                           model.state.rho, allDual, model.layout}},
-                                      {i, j}, model.layout, LohnerParameters{}),
+                                      {i, j}, model.layout, phareinLohnerDefaults),
                       1. / 1.01);
             EXPECT_LT(perDirection.indicator(std::array{PerDirection2::recentered_field_type{
                                                  model.state.rho, allDual, model.layout}},
-                                             {i, j}, model.layout, LohnerParameters{}),
+                                             {i, j}, model.layout, phareinLohnerDefaults),
                       1. / 1.01);
         }
 }
@@ -1400,7 +1408,7 @@ TEST(LohnerCrossDerivatives, CrossDerivativesTagsEveryCellAtGhostWidthTwo)
         fillField(model.state.electromag.B.getComponent(PHARE::core::Component::Y),
                   [&](auto const& idx) { return idx[0] >= ghostWidth<Model> + jump ? 1. : 0.; });
         auto tags = sentinelTags(model);
-        LohnerCrossDerivativesTaggerStrategy<Model>{quantitiesDict({{"B", 0.5}})}.tag(
+        LohnerCrossDerivativesTaggerStrategy<Model>{lohnerDict({{"B", 0.5}})}.tag(
             model, model.layout, tags.data());
         std::vector<std::uint32_t> untagged;
         for (std::uint32_t ix = 0; ix < model.layout.nbrCells()[0]; ++ix)
@@ -1442,14 +1450,13 @@ double vectorIndicatorAt(VecField const& vecfield, std::array<std::uint32_t, dim
     std::array const components{field_type{vecfield.getComponent(Component::X), allDual, layout},
                                 field_type{vecfield.getComponent(Component::Y), allDual, layout},
                                 field_type{vecfield.getComponent(Component::Z), allDual, layout}};
-    return Strategy{quantitiesDict({{"B", 1.}}, {{"B", {{"ref_magnitude", 1.}}}})}.indicator(
-        components, cell, layout, parameters);
+    return Strategy{lohnerDict({{"B", 1.}})}.indicator(components, cell, layout, parameters);
 }
 
 template<typename Model, typename Fn>
 void forBothLohner(Fn&& fn)
 {
-    PHARE::initializer::PHAREDict const dict;
+    auto const dict = lohnerFallbackDict();
     fn(LohnerPerDirectionTaggerStrategy<Model>{dict});
     fn(LohnerCrossDerivativesTaggerStrategy<Model>{dict});
 }
@@ -1463,8 +1470,8 @@ TEST(LohnerStrategy, SmallComponentOnStrongFieldIsNotTagged)
               [](auto const& idx) { return (idx[0] / 2) % 2 ? -1e-3 : 1e-3; });
     forBothLohner<Model>([&](auto method) {
         using Strategy = decltype(method);
-        EXPECT_TRUE(allEqual(methodTags<Strategy>(model, quantitiesDict({{"B", 0.5}})), 0));
-        EXPECT_TRUE(allEqual(methodTags<Strategy>(model, quantitiesDict({{"By", 0.5}})), 1));
+        EXPECT_TRUE(allEqual(methodTags<Strategy>(model, lohnerDict({{"B", 0.5}})), 0));
+        EXPECT_TRUE(allEqual(methodTags<Strategy>(model, lohnerDict({{"By", 0.5}})), 1));
     });
 }
 
@@ -1483,7 +1490,7 @@ TEST(LohnerStrategy, RotationAtConstantMagnitudeIsTagged)
 
     auto const expectTagged = [&](auto method, std::vector<std::uint32_t> const& tagged) {
         using Strategy  = decltype(method);
-        auto const tags = methodTags<Strategy>(model, quantitiesDict({{"B", 0.5}}));
+        auto const tags = methodTags<Strategy>(model, lohnerDict({{"B", 0.5}}));
         for (std::uint32_t i = 0; i < tags.size(); ++i)
         {
             auto const isTagged = std::find(tagged.begin(), tagged.end(), i) != tagged.end();
@@ -1492,13 +1499,12 @@ TEST(LohnerStrategy, RotationAtConstantMagnitudeIsTagged)
         for (auto const i : tagged)
             EXPECT_NEAR((vectorIndicatorAt<Strategy>(model.state.electromag.B,
                                                      std::array{i + ghostWidth<Model>},
-                                                     LohnerParameters{}, model.layout)),
+                                                     phareinLohnerDefaults, model.layout)),
                         expected, 1e-7)
                 << i;
     };
-    expectTagged(LohnerPerDirectionTaggerStrategy<Model>{PHARE::initializer::PHAREDict{}}, {9, 10});
-    expectTagged(LohnerCrossDerivativesTaggerStrategy<Model>{PHARE::initializer::PHAREDict{}},
-                 {8, 9, 10, 11});
+    expectTagged(LohnerPerDirectionTaggerStrategy<Model>{lohnerFallbackDict()}, {9, 10});
+    expectTagged(LohnerCrossDerivativesTaggerStrategy<Model>{lohnerFallbackDict()}, {8, 9, 10, 11});
 }
 
 TEST(LohnerVector, PerDirectionHandComputed2D)
@@ -1584,7 +1590,7 @@ TEST(LohnerVector, BoundedOnRandomVectorFields)
     std::uniform_real_distribution<double> dist{-5., 5.};
     auto const random = [&](auto const&) { return dist(gen); };
     fillRhoV(model, random, random, random);
-    LohnerParameters const parameters;
+    LohnerParameters const parameters = phareinLohnerDefaults;
     for (std::uint32_t i = 4; i < 20; ++i)
         for (std::uint32_t j = 4; j < 20; ++j)
         {
@@ -1609,9 +1615,9 @@ TEST(LohnerStrategy, NaNComponentFailsOnlyItsQuantity)
                  std::numeric_limits<double>::quiet_NaN());
     forBothLohner<Model>([&](auto method) {
         using Strategy   = decltype(method);
-        auto const onB   = methodTags<Strategy>(model, quantitiesDict({{"B", 0.5}}));
-        auto const onRho = methodTags<Strategy>(model, quantitiesDict({{"rho", 0.5}}));
-        auto const both  = methodTags<Strategy>(model, quantitiesDict({{"B", 0.5}, {"rho", 0.5}}));
+        auto const onB   = methodTags<Strategy>(model, lohnerDict({{"B", 0.5}}));
+        auto const onRho = methodTags<Strategy>(model, lohnerDict({{"rho", 0.5}}));
+        auto const both  = methodTags<Strategy>(model, lohnerDict({{"B", 0.5}, {"rho", 0.5}}));
         EXPECT_TRUE(allEqual(onB, 0));
         EXPECT_NE(std::count(onRho.begin(), onRho.end(), 1), 0);
         EXPECT_EQ(both, onRho);
@@ -1628,7 +1634,7 @@ TEST(LohnerStrategy, RoundoffVectorIsNotTagged)
     fillRhoV(model, random, random, random);
     forBothLohner<Model>([&](auto method) {
         using Strategy = decltype(method);
-        EXPECT_TRUE(allEqual(methodTags<Strategy>(model, quantitiesDict({{"rhoV", 0.1}})), 0));
+        EXPECT_TRUE(allEqual(methodTags<Strategy>(model, lohnerDict({{"rhoV", 0.1}})), 0));
     });
 }
 
@@ -1772,7 +1778,7 @@ TEST(TaggerFactory, hybridAndMHDMethods)
 
     for (std::string const method : {"default", "lohner-per-direction", "lohner-cross-derivatives"})
     {
-        PHARE::initializer::PHAREDict dict;
+        auto dict             = lohnerFallbackDict(); // the default method ignores the parameters
         dict["hybrid_method"] = method;
         dict["mhd_method"]    = method;
         EXPECT_TRUE(TaggerFactory<hybrid_model>::make(dict) != nullptr) << method;
