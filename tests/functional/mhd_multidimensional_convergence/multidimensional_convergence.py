@@ -60,6 +60,7 @@ def config(nx, reconstruction, limiter):
         cells=(2 * nx, nx, nx),
         dl=(3.0 / (2 * nx), 1.5 / nx, 1.5 / nx),
         refinement="tagging",
+        tagging={"method": "default"},
         max_mhd_level=1,
         max_nbr_levels=1,
         hyper_resistivity=0.0,

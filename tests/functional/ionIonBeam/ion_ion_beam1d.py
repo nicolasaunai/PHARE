@@ -25,6 +25,7 @@ def config():
         dl=0.2,
         hyper_resistivity=0.01,
         refinement="tagging",
+        tagging={"method": "default"},
         max_nbr_levels=3,
         # refinement_boxes={
         #     "L0": {"B0": [(50,), (110,)]},

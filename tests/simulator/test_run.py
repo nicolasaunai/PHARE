@@ -30,6 +30,7 @@ def config():
         cells=(40, 40),
         dl=(0.40, 0.40),
         refinement="tagging",
+        tagging={"method": "default"},
         max_nbr_levels=3,
         nesting_buffer=1,
         clustering="tile",

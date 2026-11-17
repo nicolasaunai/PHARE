@@ -37,6 +37,7 @@ def config():
         cells=cells,
         dl=dl,
         refinement="tagging",
+        tagging={"method": "default"},
         max_mhd_level=2,
         max_nbr_levels=2,
         hyper_resistivity=0.0,

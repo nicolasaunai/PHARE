@@ -35,6 +35,7 @@ class PatchHierarchyTest(unittest.TestCase):
                 cells=(86, 86),
                 dl=(0.3, 0.3),
                 refinement="tagging",
+                tagging={"method": "default"},
                 max_nbr_levels=2,
                 hyper_resistivity=0.005,
                 resistivity=0.001,

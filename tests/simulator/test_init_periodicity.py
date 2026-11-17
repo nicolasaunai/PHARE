@@ -71,6 +71,7 @@ def config():
         cells=(200, 100),
         dl=(0.4, 0.4),
         refinement="tagging",
+        tagging={"method": "default"},
         max_nbr_levels=3,
         tag_buffer=8,
         nesting_buffer=1,

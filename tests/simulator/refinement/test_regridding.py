@@ -40,6 +40,7 @@ def config(diag_dir_, write_timestamps, restart_source_dir=None, restart_time=No
         cells=(40, 40),
         dl=(0.40, 0.40),
         refinement="tagging",
+        tagging={"method": "default"},
         max_nbr_levels=3,
         nesting_buffer=1,
         clustering="tile",

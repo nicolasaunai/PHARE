@@ -62,6 +62,7 @@ def config(time_step, final_time, timestamps, diag_dir, x0, u, **kwargs):
         cells=(ncells,),
         dl=(dx,),
         refinement="tagging",
+        tagging={"method": "default"},
         max_mhd_level=1,
         max_nbr_levels=1,
         hyper_resistivity=0.0,

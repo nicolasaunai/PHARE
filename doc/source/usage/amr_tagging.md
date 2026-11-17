@@ -30,8 +30,15 @@ ph.Simulation(
 - `tagging_threshold` (default 0.1) is the threshold applied to the magnetic field when the
   `tagging` keyword below gives no quantities.
 
-Without the `tagging` keyword, the default criterion is applied to the magnetic field with threshold
-`tagging_threshold`. The other keywords shaping the hierarchy (`clustering`, `nesting_buffer`,
+Without the `tagging` keyword, what is tagged depends on the model:
+
+| run | criterion | quantities |
+|---|---|---|
+| hybrid, MHD + hybrid | `"gradient-scale"` | B, threshold 0.04, `ref_magnitude` 1 |
+| MHD | `"lohner-cross-derivatives"` | B and rho, threshold 0.8 |
+| any, with `tagging_threshold` given | `"default"` | B, threshold `tagging_threshold` |
+
+The last row keeps scripts written before these defaults unchanged. The other keywords shaping the hierarchy (`clustering`, `nesting_buffer`,
 `smallest_patch_size`, `largest_patch_size`) are described with
 {py:class}`~pyphare.pharein.Simulation` in {doc}`simulation`.
 
@@ -51,7 +58,7 @@ ph.Simulation(
 )
 ```
 
-- `method` is the criterion: `"default"` (the default), `"lohner-per-direction"` (Löhner's estimator
+- `method` is the criterion: `"default"` (when `tagging` is given without `method`), `"lohner-per-direction"` (Löhner's estimator
   in the form of PLUTO), `"lohner-cross-derivatives"` (Löhner's estimator in the form of FLASH, with
   cross derivatives) or `"gradient-scale"` (cell size over the gradient length of the quantity).
 - `quantities` maps each tagged quantity to its threshold and the parameters of the method for this
@@ -110,7 +117,7 @@ another.
 
 ## Examples
 
-Default criterion on the magnetic field, as when `tagging` is not given:
+Default criterion on the magnetic field, selected by `tagging_threshold` alone:
 
 ```python
 ph.Simulation(

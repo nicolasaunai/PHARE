@@ -213,6 +213,7 @@ class RestartsTest(SimulatorTest):
                 dict(
                     max_nbr_levels=3,
                     refinement="tagging",
+                    tagging={"method": "default"},
                 )
             ),
             expected_num_levels=3,
@@ -284,6 +285,7 @@ class RestartsTest(SimulatorTest):
                 dict(
                     max_nbr_levels=2,
                     refinement="tagging",
+                    tagging={"method": "default"},
                 )
             ),
             expected_num_levels=2,
@@ -427,6 +429,7 @@ class RestartsTest(SimulatorTest):
                     time_step_nbr=7,
                     max_nbr_levels=1,
                     refinement="tagging",
+                    tagging={"method": "default"},
                 )
             )
         )

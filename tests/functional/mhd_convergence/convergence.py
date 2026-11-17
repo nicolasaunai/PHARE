@@ -54,6 +54,7 @@ def config(nx, dx, reconstruction, limiter):
         cells=(nx,),
         dl=(dx,),
         refinement="tagging",
+        tagging={"method": "default"},
         max_mhd_level=1,
         max_nbr_levels=1,
         hyper_resistivity=0.0,

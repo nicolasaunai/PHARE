@@ -140,7 +140,14 @@ def config(**options):
 
 
 def withTagging(diagdir):
-    return config(**simulation_params(diagdir, refinement="tagging", max_nbr_levels=3))
+    return config(
+        **simulation_params(
+            diagdir,
+            refinement="tagging",
+            tagging={"method": "default"},
+            max_nbr_levels=3,
+        )
+    )
 
 
 def noRefinement(diagdir):

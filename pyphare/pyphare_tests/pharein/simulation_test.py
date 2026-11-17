@@ -552,8 +552,44 @@ class TestSimulation(unittest.TestCase):
             for value in parameters.values():
                 self.assertIs(type(value), float)
 
+    def test_model_defaults_without_tagging(self):
+        hybrid_default = [("B", {"threshold": 0.04, "ref_magnitude": 1.0})]
+        lohner = {"threshold": 0.8, "reltol": 0.01, "ref_magnitude": 1e-8}
+        cases = [
+            ("HybridModel", tagging.GradientScaleTagging, hybrid_default),
+            (["HybridModel"], tagging.GradientScaleTagging, hybrid_default),
+            (
+                ["MHDModel"],
+                tagging.LohnerCrossDerivativesTagging,
+                [("B", lohner), ("rho", lohner)],
+            ),
+            (["MHDModel", "HybridModel"], tagging.GradientScaleTagging, hybrid_default),
+        ]
+        for models, cls, quantities in cases:
+            tag = tagging.resolve_tagging(refinement="tagging", model_options=models)
+            self.assertIs(type(tag), cls, models)
+            self.assertEqual(tag.quantities, quantities, models)
+
+    def test_model_default_reaches_the_simulation(self):
+        self.assertIsInstance(
+            self.tagging_simulation().tagging, tagging.GradientScaleTagging
+        )
+        global_vars.sim = None
+        sim = simulation.Simulation(
+            **self._mhd_kwargs(max_nbr_levels=2, refinement="tagging")
+        )
+        self.assertIsInstance(sim.tagging, tagging.LohnerCrossDerivativesTagging)
+
+    def test_tagging_threshold_alone_keeps_the_default_criterion(self):
+        for models in ("HybridModel", ["MHDModel"]):
+            tag = tagging.resolve_tagging(
+                refinement="tagging", model_options=models, tagging_threshold=0.3
+            )
+            self.assertIs(type(tag), tagging.DefaultTagging, models)
+            self.assertEqual(tag.quantities, [("B", {"threshold": 0.3})])
+
     def test_default_path_populates_legacy_keys(self):
-        sim = self.tagging_simulation()
+        sim = self.tagging_simulation(tagging_threshold=0.1)
         dp = FakeDictPopulator()
         general.populate_amr(dp, sim)
 

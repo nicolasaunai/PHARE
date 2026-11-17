@@ -1,3 +1,4 @@
+import copy
 import math
 import numbers
 from dataclasses import dataclass
@@ -139,6 +140,28 @@ def _quantity_parameters(cls, name, spec):
     return parameters
 
 
+# What is tagged when the script says nothing about it (neither `tagging=` nor `tagging_threshold`).
+# Hybrid: the curl-scale-like criterion that follows current sheets in hybrid runs; B is
+# normalised to ~1 in PHARE units, hence ref_magnitude 1. MHD: Löhner with cross derivatives
+# (the FLASH form) on B and the density, so hydrodynamic shocks and contacts are refined too,
+# with FLASH's usual refine cutoff 0.8.
+_HYBRID_DEFAULT = {
+    "method": "gradient-scale",
+    "quantities": {"B": {"threshold": 0.04, "ref_magnitude": 1.0}},
+}
+_MHD_DEFAULT = {
+    "method": "lohner-cross-derivatives",
+    "quantities": {"B": 0.8, "rho": 0.8},
+}
+
+
+def _model_default(model_options):
+    models = {model_options} if isinstance(model_options, str) else set(model_options)
+    # MHD + hybrid runs share one quantity list: B is taggable in both models, rho is not
+    default = _MHD_DEFAULT if models == {"MHDModel"} else _HYBRID_DEFAULT
+    return copy.deepcopy(default)
+
+
 def _list_entry(entry):
     if (
         isinstance(entry, (str, bytes))
@@ -162,14 +185,17 @@ def resolve_tagging(**kwargs):
             )
         return None
 
-    threshold = kwargs.get("tagging_threshold", 0.1)
+    threshold = kwargs.get("tagging_threshold")
+    spec = kwargs.get("tagging")
+    if spec is None and threshold is None:
+        spec = _model_default(kwargs.get("model_options", "HybridModel"))
+
     if threshold is None:
         threshold = 0.1
     if isinstance(threshold, bool) or not isinstance(threshold, numbers.Real):
         raise TypeError(f"Error: tagging_threshold must be a number, got {threshold!r}")
 
-    spec = kwargs.get("tagging", None)
-    if spec is None:
+    if spec is None:  # tagging_threshold alone: the default criterion on B, as before
         spec = {}
     if not isinstance(spec, dict):
         raise TypeError(

@@ -119,6 +119,7 @@ def config(mode, order, diag_dir):
     else:
         sim = ph.Simulation(
             refinement="tagging",
+            tagging={"method": "default"},
             max_nbr_levels=2,
             tag_buffer=1,
             **common,

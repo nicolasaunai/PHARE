@@ -46,6 +46,7 @@ def config(time_step=None, with_diags=True):
         cells=cells,
         dl=dl,
         refinement="tagging",
+        tagging={"method": "default"},
         max_mhd_level=1,
         max_nbr_levels=1,
         hyper_resistivity=0.0,

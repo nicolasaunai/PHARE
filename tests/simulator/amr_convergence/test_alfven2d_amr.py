@@ -107,6 +107,7 @@ class AlfvenConvergenceTest(ConvergenceTestBase):
         base = f"phare_outputs/{self.name}_amr_convergence/uniform_N{N}_n{n}"
         return self.simulation(
             refinement="tagging",
+            tagging={"method": "default"},
             max_mhd_level=1,
             max_nbr_levels=1,
             diag_options={
