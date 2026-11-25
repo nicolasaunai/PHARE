@@ -125,18 +125,28 @@ private:
 
 
 
-    // a*b - c*d, rounded the same way at every node. Left to the compiler, gcc's default
-    // -ffp-contract=fast may fuse either product into an FMA, and picks differently in the
-    // vectorized loop and its scalar remainder, so two copies of a shared node would differ
-    // by 1 ulp (#1611).
-    static auto diff_of_products_(auto const a, auto const b, auto const c, auto const d)
+    // a*b, kept unevaluated until subtracted from another product
+    struct Product
     {
-#if defined(FP_FAST_FMA) || defined(__FMA__)
-        return std::fma(a, b, -(c * d));
+        double a, b;
+
+        // a*b - c*d, rounded the same way at every node: the left product goes through an FMA,
+        // the right one is rounded first. Left to the compiler, gcc's default
+        // -ffp-contract=fast fuses either product, and picks differently in the vectorized loop
+        // and its scalar remainder, so two copies of a shared node would differ by 1 ulp
+        // (#1611). Without FMA hardware there is nothing to fuse, and std::fma would be a slow
+        // libm call.
+        friend double operator-(Product const& p, Product const& q)
+        {
+#if defined(__FP_FAST_FMA) || defined(FP_FAST_FMA) || defined(__FMA__)
+            return std::fma(p.a, p.b, -(q.a * q.b));
 #else
-        return a * b - c * d;
+            return p.a * p.b - q.a * q.b;
 #endif
-    }
+        }
+    };
+
+    static Product product(double const a, double const b) { return {a, b}; }
 
     template<auto component, typename VecField>
     auto ideal_(VecField const& Ve, VecField const& B, MeshIndex<dimension> index) const
@@ -154,7 +164,7 @@ private:
             auto const byOnEx = GridLayout::template project<Scalar::By, Scalar::Ex>(By, index);
             auto const bzOnEx = GridLayout::template project<Scalar::Bz, Scalar::Ex>(Bz, index);
 
-            return diff_of_products_(vzOnEx, byOnEx, vyOnEx, bzOnEx);
+            return product(vzOnEx, byOnEx) - product(vyOnEx, bzOnEx);
         }
 
         if constexpr (component == Component::Y)
@@ -169,7 +179,7 @@ private:
             auto const bxOnEy = GridLayout::template project<Scalar::Bx, Scalar::Ey>(Bx, index);
             auto const bzOnEy = GridLayout::template project<Scalar::Bz, Scalar::Ey>(Bz, index);
 
-            return diff_of_products_(vxOnEy, bzOnEy, vzOnEy, bxOnEy);
+            return product(vxOnEy, bzOnEy) - product(vzOnEy, bxOnEy);
         }
 
         if constexpr (component == Component::Z)
@@ -184,7 +194,7 @@ private:
             auto const bxOnEz = GridLayout::template project<Scalar::Bx, Scalar::Ez>(Bx, index);
             auto const byOnEz = GridLayout::template project<Scalar::By, Scalar::Ez>(By, index);
 
-            return diff_of_products_(vyOnEz, bxOnEz, vxOnEz, byOnEz);
+            return product(vyOnEz, bxOnEz) - product(vxOnEz, byOnEz);
         }
     }
 
